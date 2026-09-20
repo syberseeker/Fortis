@@ -1,4 +1,5 @@
-<img width="1254" height="1254" alt="favicon" src="https://github.com/user-attachments/assets/d6848e89-4408-460d-b8a9-7159eb6065db" />
+<img width="410" height="153" alt="ChatGPT Image Sep 21, 2026, 07_58_18 AM" src="https://github.com/user-attachments/assets/8c417fd3-1622-4879-a2e4-f0bfe9040d3e" />
+
 
 
 # AI Cybersecurity Advisor — Desktop (Fortis)
