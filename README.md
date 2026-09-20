@@ -1,4 +1,5 @@
-![Uploading favicon.png…]()
+<img width="1254" height="1254" alt="favicon" src="https://github.com/user-attachments/assets/d6848e89-4408-460d-b8a9-7159eb6065db" />
+
 
 # AI Cybersecurity Advisor — Desktop (Fortis)
 
