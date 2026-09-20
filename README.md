@@ -1,3 +1,5 @@
+![Uploading favicon.png…]()
+
 # AI Cybersecurity Advisor — Desktop (Fortis)
 
 A fully local cybersecurity advisory **desktop app**. Upload any document
