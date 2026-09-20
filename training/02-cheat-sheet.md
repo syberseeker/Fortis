@@ -29,7 +29,7 @@ Report: all chunks → analysis.py (flat/map-reduce) → SecurityReport → DOCX
 ## File Map
 
 ```
-cyber-advisor/
+fortis/
 ├── docker-compose.yml          # 4 services: ollama, backend, openwebui, pipelines
 ├── .env                        # OLLAMA_MODEL, EMBEDDING_MODEL, etc.
 │
@@ -78,8 +78,8 @@ cyber-advisor/
 │   └── favicon.png
 │
 └── openwebui_pipeline/
-    ├── cyber_advisor_pipe.py   # Main pipeline (routing, guardrails, reports)
-    └── cyber_advisor_skill.py  # Finding validator skill
+    ├── fortis_pipe.py   # Main pipeline (routing, guardrails, reports)
+    └── fortis_skill.py  # Finding validator skill
 ```
 
 ## Key API Endpoints
@@ -130,17 +130,17 @@ docker compose down
 docker compose down -v
 
 # View logs
-docker logs cyber-advisor-backend -f
-docker logs cyber-advisor-ollama -f
+docker logs fortis-backend -f
+docker logs fortis-ollama -f
 
 # Rebuild after code changes
 docker compose build backend && docker compose up -d backend
 
 # Pull/update model
-docker exec cyber-advisor-ollama ollama pull qwen2.5:3b
+docker exec fortis-ollama ollama pull qwen2.5:3b
 
 # Load official framework document
-docker exec cyber-advisor-backend \
+docker exec fortis-backend \
   python -m app.frameworks.loader NIST_CSF /path/to/document.pdf
 ```
 

@@ -158,7 +158,7 @@ cp .env.example .env
 docker compose up -d --build
 
 # 3. Pull the LLM model (first time only, ~1.9GB)
-docker exec -it cyber-advisor-ollama ollama pull qwen2.5:3b
+docker exec -it fortis-ollama ollama pull qwen2.5:3b
 
 # 4. Verify
 curl http://localhost:8010/health
@@ -166,7 +166,7 @@ curl http://localhost:8010/health
 
 # 5. Open the UI
 # Navigate to http://localhost:3000
-# In Open WebUI: Settings → Pipelines → install cyber_advisor_pipe.py
+# In Open WebUI: Settings → Pipelines → install fortis_pipe.py
 ```
 
 ### Understanding the .env Configuration
@@ -436,7 +436,7 @@ Open WebUI is a Docker image with a custom favicon. The real customization is th
 
 ### 4.2 The Pipeline — Connecting UI to Backend
 
-**File:** `openwebui_pipeline/cyber_advisor_pipe.py`
+**File:** `openwebui_pipeline/fortis_pipe.py`
 
 The pipeline is a Python class that Open WebUI calls on every chat message. It's the glue layer that:
 
@@ -507,7 +507,7 @@ See `01-lab-exercises.md` for detailed step-by-step instructions.
 The built-in framework corpus is paraphrased. For client-facing reports citing exact standard language:
 
 ```bash
-docker exec -it cyber-advisor-backend \
+docker exec -it fortis-backend \
   python -m app.frameworks.loader NIST_CSF /path/to/NIST.CSWP.29.pdf
 ```
 

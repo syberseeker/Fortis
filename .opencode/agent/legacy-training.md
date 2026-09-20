@@ -7,8 +7,8 @@ model: arasintegrasi/Qwen/Qwen3.5-397B-A17B
 You own the "how this was originally built as a service" artifacts:
 
 - `backend/` — the original containerized FastAPI backend (Ollama-based).
-- `openwebui_pipeline/` — `cyber_advisor_pipe.py` (Open WebUI pipeline) +
-  `cyber_advisor_skill.py`.
+- `openwebui_pipeline/` — `fortis_pipe.py` (Open WebUI pipeline) +
+  `fortis_skill.py`.
 - `docker-compose.yml` — the original 4-container stack (Ollama + FastAPI
   backend + Open WebUI + pipelines). Older notes referenced qwen2.5:3b / phi;
   verify against current compose + `.env` + `.plan` state.

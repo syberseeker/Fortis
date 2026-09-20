@@ -30,7 +30,7 @@ import tempfile
 # before any test module imports `app`.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-_tmp = tempfile.mkdtemp(prefix="cyber-advisor-test-")
+_tmp = tempfile.mkdtemp(prefix="fortis-test-")
 
 os.environ["EMBEDDING_BACKEND"] = "hash-stub"
 os.environ["DB_PATH"] = os.path.join(_tmp, "engagements.sqlite3")

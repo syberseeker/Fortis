@@ -1,6 +1,6 @@
 """
 title: Cybersecurity Advisor (Fortis)
-author: cyber-advisor
+author: fortis
 version: 0.3.0
 description: >
   Routes chat + file uploads to the local RAG cybersecurity backend, scoped
@@ -83,7 +83,7 @@ class Pipeline:
     class Valves(BaseModel):
         BACKEND_URL: str = Field(
             default="http://backend:8010",
-            description="Base URL of the cyber-advisor FastAPI backend. "
+            description="Base URL of the Fortis FastAPI backend. "
                         "Use http://localhost:8010 if running Open WebUI outside Docker.",
         )
         DEFAULT_REPORT_FORMAT: str = Field(
@@ -92,12 +92,12 @@ class Pipeline:
         REQUEST_TIMEOUT: int = Field(default=300)
 
     def __init__(self):
-        self.id = "cyber_advisor"
+        self.id = "fortis"
         self.name = "Cybersecurity Advisor (Fortis)"
         self.valves = self.Valves()
 
     def pipes(self) -> List[Dict[str, str]]:
-        return [{"id": "fortis-cyber-advisor", "name": self.name}]
+        return [{"id": "fortis", "name": self.name}]
 
     async def on_startup(self):
         pass

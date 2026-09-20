@@ -1,7 +1,7 @@
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: cyber-advisor-ollama
+    container_name: fortis-ollama
     restart: unless-stopped
     ports:
       - "11434:11434"
@@ -20,7 +20,7 @@ services:
 
   backend:
     build: ./backend
-    container_name: cyber-advisor-backend
+    container_name: fortis-backend
     restart: unless-stopped
     depends_on:
       - ollama
@@ -39,7 +39,7 @@ services:
 
   openwebui:
     build: ./openwebui
-    container_name: cyber-advisor-webui
+    container_name: fortis-webui
     restart: unless-stopped
     depends_on:
       - backend
@@ -57,14 +57,14 @@ services:
       - DEFAULT_USER_ROLE=pending
       - DEFAULT_MODELS=qwen3:8b:latest
       - WEBUI_ADMIN_NAME=admin
-      - WEBUI_ADMIN_EMAIL=admin@cyberadvisor.local
+      - WEBUI_ADMIN_EMAIL=admin@fortis.local
       - WEBUI_ADMIN_PASSWORD=admin123
     volumes:
       - openwebui_data:/app/backend/data
 
   pipelines:
     image: ghcr.io/open-webui/pipelines:main
-    container_name: cyber-advisor-pipelines
+    container_name: fortis-pipelines
     restart: unless-stopped
     ports:
       - "9099:9099"

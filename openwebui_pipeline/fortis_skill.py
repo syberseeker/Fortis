@@ -1,6 +1,6 @@
 """
 title: Fortis Finding Validator
-author: cyber-advisor
+author: fortis
 version: 0.1.0
 description: >
   Validates and structures security findings to ensure consistent report output.

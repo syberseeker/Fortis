@@ -205,7 +205,7 @@ generate a docx report for this large document
 
 **What to observe in the backend logs:**
 ```bash
-docker logs cyber-advisor-backend 2>&1 | tail -20
+docker logs fortis-backend 2>&1 | tail -20
 ```
 
 You should see log lines indicating:
@@ -310,7 +310,7 @@ Fortis should now retrieve and reference your custom framework controls.
 If you have an official NIST CSF PDF:
 
 ```bash
-docker exec -it cyber-advisor-backend \
+docker exec -it fortis-backend \
   python -m app.frameworks.loader NIST_CSF /path/to/NIST.CSWP.29.pdf
 ```
 
@@ -398,7 +398,7 @@ Edit `backend/app/ingestion.py`. Add support for `.log` files with timestamp par
 
 ### Challenge 4: Modify the Topic Guardrail
 
-Edit `openwebui_pipeline/cyber_advisor_pipe.py`. Add a keyword pattern that currently blocks a query you think should be allowed, or remove one that's too permissive. Test the boundary.
+Edit `openwebui_pipeline/fortis_pipe.py`. Add a keyword pattern that currently blocks a query you think should be allowed, or remove one that's too permissive. Test the boundary.
 
 ---
 
@@ -406,7 +406,7 @@ Edit `openwebui_pipeline/cyber_advisor_pipe.py`. Add a keyword pattern that curr
 
 | Problem | Solution |
 |---------|----------|
-| "Model not pulled yet" | `docker exec -it cyber-advisor-ollama ollama pull qwen2.5:3b` |
+| "Model not pulled yet" | `docker exec -it fortis-ollama ollama pull qwen2.5:3b` |
 | "Could not reach the backend" | Check `docker compose ps` — all containers should be "Up" |
 | "No active engagement" | Create one first: `/new-engagement Client :: Name` |
 | Upload returns 413 | File exceeds 40MB limit — split it |

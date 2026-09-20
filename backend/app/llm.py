@@ -69,7 +69,7 @@ async def check_model_available() -> Optional[str]:
             if settings.ollama_model not in models:
                 return (
                     f"Model '{settings.ollama_model}' not pulled yet. Run: "
-                    f"docker exec -it cyber-advisor-ollama ollama pull {settings.ollama_model}"
+                    f"docker exec -it fortis-ollama ollama pull {settings.ollama_model}"
                 )
             return None
     except httpx.HTTPError as e:

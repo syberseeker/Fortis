@@ -38,7 +38,7 @@ upload a lab document → chat. Details in `04-desktop-guide.md`.
 ### Running the original containerized stack (instructor / under-the-hood module)
 
 1. Start the stack: `docker compose up -d --build`
-2. Pull the model: `docker exec -it cyber-advisor-ollama ollama pull qwen2.5:3b`
+2. Pull the model: `docker exec -it fortis-ollama ollama pull qwen2.5:3b`
 3. Follow `00-workshop-guide.md` for presentation flow
 4. Use `01-lab-exercises.md` for hands-on segments
 5. Reference `02-cheat-sheet.md` for quick lookups during Q&A

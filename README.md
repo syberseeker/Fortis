@@ -104,7 +104,7 @@ see `README.orig.md` notes and `training/00-workshop-guide.md`.
 ## Repo layout
 
 ```
-cyber-advisor/
+fortis/
 ├── setup.ps1 / setup.sh       # one-command setup + launch
 ├── core/                      # RAG backend (lib): ingestion, Chroma, RAG,
 │   │                          # map-reduce analysis, report renderers, store

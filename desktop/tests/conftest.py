@@ -23,7 +23,7 @@ Hugging Face:
 import os
 import tempfile
 
-_tmp = tempfile.mkdtemp(prefix="cyber-advisor-test-")
+_tmp = tempfile.mkdtemp(prefix="fortis-test-")
 
 os.environ["EMBEDDING_BACKEND"] = "hash-stub"
 os.environ["DB_PATH"] = os.path.join(_tmp, "engagements.sqlite3")
