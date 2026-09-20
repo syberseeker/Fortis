@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fortis — Cybersecurity Advisor</title>
+<link rel="icon" type="image/png" href="/ui/logo.png">
+<script src="/ui/vendor/markdown-it.min.js"></script>
+<script src="/ui/vendor/mermaid.min.js"></script>
+<style>
+:root {
+  --bg: #0a0e14; --bg2: #111820; --bg3: #1a232e; --border: #26303d;
+  --text: #d9e2ec; --muted: #9aa5b1; --accent: #5b8fc4; --accent2: #4a7ab8;
+  --ok: #2fb892; --warn: #d9a036; --err: #d9535f;
+  --crit: #c43a45; --high: #d96b29; --med: #c9a227; --low: #5b8fc4; --info: #6b7a8f;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  --font-body: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, "Ubuntu", "Droid Sans", sans-serif;
+  --font-mono: "Cascadia Code", Consolas, "SF Mono", "Ubuntu Mono", monospace;
+  --sidebar-width: 280px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg); color: var(--text); display: flex; overflow: hidden;
+}
+/* ---------- sidebar ---------- */
+#sidebar {
+  width: var(--sidebar-width); min-width: var(--sidebar-width); background: var(--bg2); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; height: 100vh;
+}
+#sidebar header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+#sidebar header img { flex-shrink: 0; }
+#sidebar header h1 { font-size: 16px; letter-spacing: .5px; }
+#sidebar header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+#engagements { flex: 1; overflow-y: auto; padding: 8px; }
+.eng-item {
+  padding: 10px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 4px;
+  border: 1px solid transparent; position: relative;
+}
+.eng-item:hover { background: var(--bg3); }
+.eng-item.active { background: var(--bg3); border-color: var(--accent2); }
+.eng-item:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+.eng-item .del-btn {
+  position: absolute; top: 6px; right: 6px; width: 24px; height: 24px;
+  border-radius: 6px; border: 1px solid var(--border); background: var(--bg3);
+  color: var(--muted); font-size: 14px; line-height: 1; display: flex;
+  align-items: center; justify-content: center; cursor: pointer; opacity: .55;
+}
+.eng-item:hover .del-btn, .eng-item:focus-within .del-btn, .eng-item .del-btn:focus { opacity: 1; }
+.eng-item .del-btn:hover { background: rgba(248,113,113,.08); border-color: var(--err); color: var(--err); }
+.eng-item .name { font-weight: 600; font-size: 14px; padding-right: 30px; }
+.eng-item .client { color: var(--muted); font-size: 12px; padding-right: 30px; }
+.eng-item .meta { color: var(--muted); font-size: 12px; margin-top: 4px; display: flex; gap: 8px; }
+.badge { font-size: 12px; padding: 1px 6px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
+.badge.closed { color: var(--muted); }
+.badge.active { color: var(--ok); }
+#sidebar footer { padding: 12px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
+button {
+  background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 9px 12px; cursor: pointer; font-size: 13px;
+}
+button:hover { border-color: var(--accent2); }
+button.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; font-weight: 600; }
+button.danger { color: var(--err); }
+button.danger:hover { background: rgba(248,113,113,.08); border-color: var(--err); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button:focus-visible, .eng-item:focus-visible, #input:focus-visible, select:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+/* ---------- main ---------- */
+#main { flex: 1; display: flex; flex-direction: column; height: 100vh; min-width: 0; }
+#topbar {
+  padding: 10px var(--space-4); border-bottom: 1px solid var(--border); background: var(--bg2);
+  display: flex; align-items: center; gap: 12px; font-size: 13px;
+}
+#topbar .eng-title { font-weight: 600; }
+#topbar .spacer { flex: 1; }
+#model-btn { font-size: 12px; }
+#status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); display: inline-block; }
+#status-dot.ok { background: var(--ok); } #status-dot.err { background: var(--err); }
+#chat { flex: 1; overflow-y: auto; padding: var(--space-5); }
+#chat-inner { max-width: 860px; margin: 0 auto; }
+.msg { margin-bottom: var(--space-5); }
+.msg .who { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.msg.user .bubble { background: rgba(91,143,196,.06); border: none; border-left: 2px solid var(--accent2); color: #b8c2cc; }
+.msg.assistant .bubble { background: var(--bg2); border: 1px solid var(--border); }
+.bubble { border-radius: 8px; padding: 12px 16px; line-height: 1.6; font-size: 15px; word-wrap: break-word; word-break: break-word; }
+.bubble pre { background: #0b0f14; border: 1px solid var(--border); border-radius: 6px; padding: 10px; overflow-x: auto; margin: 8px 0; font-size: 13px; font-family: var(--font-mono); }
+.mermaid-block { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 10px 0; overflow-x: auto; }
+.mermaid-block svg { max-width: 100%; height: auto; }
+.mermaid-invalid { opacity: .7; }
+.mermaid-invalid .mermaid-src { display: block; font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; margin-top: 8px; }
+.mermaid-invalid .mermaid-notice { font-size: 11px; color: var(--muted); margin-top: 6px; }
+.bubble code { font-family: var(--font-mono); font-size: 13px; }
+.bubble table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 13px; }
+.bubble th, .bubble td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.bubble th { background: var(--bg3); }
+.bubble a { color: var(--accent); }
+.bubble blockquote { border-left: 3px solid var(--accent2); padding-left: 10px; color: var(--muted); margin: 8px 0; }
+.sev-critical { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid currentColor; color: var(--crit); background: rgba(196,58,69,.14); vertical-align: text-bottom; }
+.sev-high { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid currentColor; color: var(--high); background: rgba(217,107,41,.14); vertical-align: text-bottom; }
+.sev-medium { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid currentColor; color: var(--med); background: rgba(201,162,39,.14); vertical-align: text-bottom; }
+.sev-low { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid currentColor; color: var(--low); background: rgba(91,143,196,.14); vertical-align: text-bottom; }
+.sev-informational { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid currentColor; color: var(--info); background: rgba(107,122,143,.25); vertical-align: text-bottom; }
+#empty { text-align: center; margin-top: 12vh; color: var(--muted); }
+#empty h2 { color: var(--text); margin-bottom: 8px; }
+#empty .suggestions { display: grid; gap: 8px; max-width: 560px; margin: 20px auto 0; }
+#empty .suggestions button { text-align: left; }
+#empty .suggestions button:hover { border-color: var(--accent2); background: var(--bg3); }
+#empty .hint { margin-top: 8px; color: var(--muted); font-size: 13px; }
+/* ---------- composer ---------- */
+#composer-wrap { border-top: 1px solid var(--border); background: var(--bg2); padding: var(--space-3) var(--space-5); }
+#composer { max-width: 860px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+#input {
+  flex: 1; background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 12px 14px; font-size: 15px; font-family: inherit; resize: none;
+  min-height: 52px; max-height: 180px; outline: none;
+}
+#input:focus { border-color: var(--accent2); }
+.icon-btn { padding: 11px 13px; font-size: 16px; line-height: 1; border-radius: 6px; }
+#role-select { background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 9px 11px; font-size: 13px; cursor: pointer; outline: none; }
+#role-select:focus { border-color: var(--accent2); }
+#status-line { max-width: 860px; margin: 6px auto 0; font-size: 12px; color: var(--muted); min-height: 16px; }
+#status-line[aria-live] { }
+/* ---------- dialogs ---------- */
+dialog {
+  background: var(--bg2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 12px; padding: 28px; width: 480px; max-width: 92vw;
+}
+dialog::backdrop { background: rgba(0,0,0,.6); }
+dialog h3 { margin-bottom: 14px; font-size: 18px; font-weight: 600; }
+dialog label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+dialog input, dialog select {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 9px 11px; font-size: 14px;
+}
+dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+.dlg-close { padding: 4px 6px; line-height: 1; background: transparent; border: none; color: var(--muted); cursor: pointer; border-radius: 6px; }
+.dlg-close:hover { color: var(--text); }
+.tier-opt { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
+.tier-opt:hover { border-color: var(--accent2); }
+.tier-opt.selected { border-color: var(--accent2); background: var(--bg3); }
+.tier-opt.disabled { opacity: .45; cursor: not-allowed; }
+.tier-opt .t-name { font-weight: 600; font-size: 14px; }
+.tier-opt .t-desc { color: var(--muted); font-size: 12px; }
+.tier-opt .t-size { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+#dl-progress { height: 6px; background: var(--bg3); border-radius: 4px; overflow: hidden; margin-top: 10px; display: none; }
+#dl-progress[role="progressbar"] { }
+#dl-progress > div { height: 100%; background: var(--accent2); width: 0%; }
+@media (prefers-reduced-motion: no-preference) {
+  #dl-progress > div { transition: width .3s; }
+}
+#dl-status { font-size: 12px; color: var(--muted); margin-top: 6px; display: none; }
+.tag { display:inline-flex; align-items: center; font-size:11px; padding:2px 7px; border-radius:999px; margin-left:6px; vertical-align: middle; font-weight: 600; }
+.tag.rec { background: var(--accent2); color: #fff; border: 1px solid var(--accent2); }
+.tag.on { background: rgba(47,184,146,.12); color: var(--ok); border: 1px solid var(--ok); position: relative; padding-left: 18px; }
+.tag.on::before { content:''; width:6px; height:6px; border-radius:50%; background: var(--ok); position: absolute; left: 6px; top: 50%; transform: translateY(-50%); }
+@media (prefers-reduced-motion: no-preference) {
+  .tag.on::before { animation: pulse 2s infinite; }
+}
+@keyframes pulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <header>
+    <img src="/ui/logo.png" alt="Fortis" width="34" height="34" style="height:34px;width:34px;border-radius:7px">
+    <h1>Fortis</h1>
+    <div class="sub">Cybersecurity Advisor · local</div>
+  </header>
+  <div id="engagements"></div>
+  <footer>
+    <button id="btn-new-eng" class="primary">+ New engagement</button>
+    <button id="btn-close-eng">Close active engagement</button>
+    <button id="btn-open-reports">Open reports folder</button>
+  </footer>
+</nav>
+
+<main id="main">
+  <div id="topbar">
+    <span id="status-dot"></span>
+    <span class="eng-title" id="eng-title">No engagement selected</span>
+    <span class="spacer"></span>
+    <button id="model-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Model</button>
+  </div>
+  <div id="chat"><div id="chat-inner">
+    <div id="empty">
+      <img src="/ui/logo.png" alt="Fortis" width="110" height="110" style="width:110px;height:110px;border-radius:16px;margin-bottom:14px;box-shadow:0 4px 24px rgba(0,0,0,.35)">
+      <h2>Fortis</h2>
+      <p>Your local AI cybersecurity consultant. Everything stays on this machine.</p>
+      <div class="suggestions">
+        <button data-q="What are the OWASP Top 10 risks I should check first in a new web application?">Explain the OWASP Top 10 for a new web app</button>
+        <button data-q="Compare NIST CSF 2.0 functions with CIS Controls v8.1 in a table.">NIST CSF vs CIS Controls (table)</button>
+        <button data-q="Upload a config file, then ask me to review it. Tip: use the attach button.">Attach a config or policy file, then ask for review</button>
+      </div>
+      <p class="hint">Create an engagement in the sidebar first — documents and reports are scoped to it.</p>
+    </div>
+  </div></div>
+  <div id="composer-wrap">
+    <div id="composer">
+      <button id="btn-attach" class="icon-btn" title="Attach file for review" aria-label="Attach file for review">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+      </button>
+      <select id="role-select" title="Analyst mode — shapes Fortis's answer style">
+        <option value="general">General</option>
+        <option value="grc">GRC</option>
+        <option value="code">Code</option>
+        <option value="osint">OSINT / CTI</option>
+      </select>
+      <textarea id="input" placeholder="Ask Fortis… (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="btn-send" class="primary icon-btn" title="Send" aria-label="Send message">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align:-2px"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
+    </div>
+    <div id="status-line" aria-live="polite"></div>
+  </div>
+</main>
+
+<!-- new engagement dialog -->
+<dialog id="dlg-new-eng">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <h3 style="margin:0">New engagement</h3>
+    <button class="dlg-close" aria-label="Close dialog">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <label>Client name</label>
+  <input id="ne-client" placeholder="e.g. Acme Corp">
+  <label>Engagement name</label>
+  <input id="ne-name" placeholder="e.g. Q3 firewall config review">
+  <label>Notes (optional)</label>
+  <input id="ne-notes" placeholder="Scope, context…">
+  <div class="row">
+    <button onclick="dlgNewEng.close()">Cancel</button>
+    <button id="ne-create" class="primary">Create</button>
+  </div>
+</dialog>
+
+<!-- model dialog -->
+<dialog id="dlg-model">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <h3 style="margin:0">Model</h3>
+    <button class="dlg-close" aria-label="Close dialog">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="hw-line" style="color:var(--muted);font-size:12px;margin-bottom:12px"></div>
+  <div id="tier-list"></div>
+  <div id="dl-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div></div></div>
+  <div id="dl-status"></div>
+  <div class="row">
+    <button onclick="dlgModel.close()">Close</button>
+  </div>
+</dialog>
+
+<!-- delete engagement dialog -->
+<dialog id="dlg-del-eng">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <h3 style="margin:0">Delete engagement</h3>
+    <button class="dlg-close" aria-label="Close dialog">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <p id="del-eng-info" style="margin-bottom:12px;font-size:14px"></p>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:18px">This permanently deletes the engagement, its indexed documents and chunks. This cannot be undone.</p>
+  <div class="row">
+    <button onclick="dlgDelEng.close()">Cancel</button>
+    <button id="del-eng-confirm" class="danger">Delete</button>
+  </div>
+</dialog>
+
+<input type="file" id="file-input" multiple style="display:none">
+
+<script>
+const $ = (id) => document.getElementById(id);
+const api = (path, opts) => fetch(path, opts).then(async r => {
+  if (!r.ok) throw new Error((await r.text().catch(() => '')) || r.statusText);
+  return r.json();
+});
+
+let engagements = [];
+let activeId = null;
+let history = [];          // [{role, content}]
+let busy = false;
+let currentRole = localStorage.getItem('fortis_role') || 'general';
+let pendingDeleteId = null;
+
+/* ---------- markdown ---------- */
+function esc(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+if (!window.markdownit) {
+  // offline fallback if the bundled library failed to load
+  window.markdownit = () => ({ render: (t) => esc(t).replace(/\n/g, '<br>') });
+}
+const md = window.markdownit({ linkify: true, breaks: true });
+
+let mermaidReady = false;
+if (window.mermaid) {
+  try {
+    window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' });
+    mermaidReady = true;
+  } catch (e) { mermaidReady = false; }
+}
+function decodeHtml(s) {
+  return (s || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function escapeAttr(s) {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderMd(text) {
+  let html = md.render(text || '');
+  // post-process mermaid fences
+  if (mermaidReady) {
+    html = html.replace(/<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g, (match, codeEscaped) => {
+      const raw = decodeHtml(codeEscaped);
+      const block = document.createElement('div');
+      block.className = 'mermaid-block';
+      block.dataset.raw = raw;
+      const pre = document.createElement('pre');
+      pre.className = 'mermaid-src';
+      pre.textContent = raw;
+      block.appendChild(pre);
+      const tmp = document.createElement('div');
+      tmp.appendChild(block);
+      return tmp.innerHTML;
+    });
+  }
+  // severity highlighting via TreeWalker
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  const sevPattern = /\b(Critical|High|Medium|Low|Informational)\b/g;
+  const skipTags = new Set(['CODE', 'PRE', 'A', 'SCRIPT']);
+  const nodesToReplace = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    let ancestor = node.parentElement;
+    let skip = false;
+    while (ancestor) {
+      if (skipTags.has(ancestor.tagName)) { skip = true; break; }
+      ancestor = ancestor.parentElement;
+    }
+    if (skip) continue;
+    const text = node.nodeValue;
+    const matches = [];
+    let m;
+    while ((m = sevPattern.exec(text)) !== null) {
+      matches.push({ start: m.index, end: m.index + m[0].length, word: m[1] });
+    }
+    if (matches.length) {
+      const frag = document.createDocumentFragment();
+      let lastIdx = 0;
+      for (const match of matches) {
+        if (match.start > lastIdx) {
+          frag.appendChild(document.createTextNode(text.slice(lastIdx, match.start)));
+        }
+        const span = document.createElement('span');
+        span.className = 'sev-' + match.word.toLowerCase();
+        span.textContent = match.word;
+        frag.appendChild(span);
+        lastIdx = match.end;
+      }
+      if (lastIdx < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+      }
+      nodesToReplace.push({ node, frag });
+    }
+  }
+  for (const { node, frag } of nodesToReplace) {
+    node.replaceWith(frag);
+  }
+  return container.innerHTML;
+}
+
+let enhanceChain = Promise.resolve();
+
+async function enhanceMermaid(container) {
+  if (!mermaidReady) return;
+  enhanceChain = enhanceChain.then(async () => {
+    const blocks = container.querySelectorAll('.mermaid-block:not([data-done])');
+    for (const block of blocks) {
+      block.setAttribute('data-done', 'true');
+      const raw = block.dataset.raw || '';
+      try {
+        await window.mermaid.parse(raw);
+      } catch (e) {
+        block.classList.add('mermaid-invalid');
+        block.innerHTML = `<pre class="mermaid-src">${esc(raw)}</pre><div class="mermaid-notice">Diagram syntax could not be rendered</div>`;
+        continue;
+      }
+      try {
+        block.textContent = raw;
+        await window.mermaid.run({ nodes: [block] });
+      } catch (e) {
+        block.classList.add('mermaid-invalid');
+        block.innerHTML = `<pre class="mermaid-src">${esc(raw)}</pre><div class="mermaid-notice">Diagram syntax could not be rendered</div>`;
+      }
+    }
+  });
+}
+
+/* ---------- engagements ---------- */
+async function loadEngagements() {
+  try {
+    engagements = await api('/engagements');
+    try {
+      const act = await api('/engagements/active/local');
+      activeId = act.id;
+    } catch { activeId = null; }
+    renderEngagements();
+    updateComposerState();
+  } catch (e) { status('Failed to load engagements: ' + e.message, true); }
+}
+
+function renderEngagements() {
+  const box = $('engagements');
+  box.innerHTML = '';
+  if (!engagements.length) {
+    box.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px">No engagements yet.<br>Click <b>+ New engagement</b> to start.</div>';
+    return;
+  }
+  for (const e of engagements) {
+    const div = document.createElement('div');
+    div.className = 'eng-item' + (e.id === activeId ? ' active' : '');
+    div.tabIndex = 0;
+    div.role = 'button';
+    div.setAttribute('aria-pressed', e.id === activeId ? 'true' : 'false');
+    div.innerHTML = `
+      <div class="client">${esc(e.client_name)}</div>
+      <div class="name">${esc(e.name)}</div>
+      <div class="meta"><span class="badge ${e.status}">${e.status}</span></div>
+      <button class="del-btn" aria-label="Delete engagement"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`;
+    div.onclick = () => activateEngagement(e.id);
+    div.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); activateEngagement(e.id); } };
+    const delBtn = div.querySelector('.del-btn');
+    delBtn.onclick = (ev) => { ev.stopPropagation(); confirmDeleteEngagement(e); };
+    box.appendChild(div);
+  }
+}
+
+function restoreEmptyState() {
+  const inner = $('chat-inner');
+  inner.innerHTML = `
+    <div id="empty">
+      <img src="/ui/logo.png" alt="Fortis" width="110" height="110" style="width:110px;height:110px;border-radius:16px;margin-bottom:14px;box-shadow:0 4px 24px rgba(0,0,0,.35)">
+      <h2>Fortis</h2>
+      <p>Your local AI cybersecurity consultant. Everything stays on this machine.</p>
+      <div class="suggestions">
+        <button data-q="What are the OWASP Top 10 risks I should check first in a new web application?">Explain the OWASP Top 10 for a new web app</button>
+        <button data-q="Compare NIST CSF 2.0 functions with CIS Controls v8.1 in a table.">NIST CSF vs CIS Controls (table)</button>
+        <button data-q="Upload a config file, then ask me to review it. Tip: use the attach button.">Attach a config or policy file, then ask for review</button>
+      </div>
+      <p class="hint">Create an engagement in the sidebar first — documents and reports are scoped to it.</p>
+    </div>`;
+  document.querySelectorAll('#empty .suggestions button').forEach(b => {
+    b.onclick = () => { $('input').value = b.dataset.q; send(); };
+  });
+}
+
+async function activateEngagement(id) {
+  restoreEmptyState();
+  history = [];
+  try {
+    await api('/engagements/active', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: 'local', engagement_id: id }),
+    });
+    activeId = id;
+    renderEngagements();
+    await refreshFiles();
+    updateComposerState();
+  } catch (e) { status('Switch failed: ' + e.message, true); }
+}
+
+async function refreshFiles() {
+  if (!activeId) { $('eng-title').textContent = 'No engagement selected'; return; }
+  try {
+    const detail = await api('/engagements/' + activeId);
+    const files = detail.files || [];
+    $('eng-title').textContent = `${detail.client_name} — ${detail.name}` + (files.length ? `  ·  ${files.length} file(s)` : '');
+  } catch { /* keep old title */ }
+}
+
+function updateComposerState() {
+  $('btn-send').disabled = busy || !activeId;
+  $('input').style.opacity = activeId ? '1' : '.5';
+  $('input').style.pointerEvents = activeId ? 'auto' : 'none';
+}
+
+/* ---------- chat ---------- */
+function addMsg(role, text, cls = '') {
+  const empty = $('empty');
+  if (empty) empty.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + role;
+  wrap.innerHTML = `<div class="who">${role === 'user' ? 'You' : 'Fortis'}</div>
+    <div class="bubble ${cls}"></div>`;
+  const bubbleEl = wrap.querySelector('.bubble');
+  bubbleEl.innerHTML = role === 'user' ? esc(text).replace(/\n/g, '<br>') : renderMd(text);
+  if (role === 'assistant') enhanceMermaid(bubbleEl);
+  $('chat-inner').appendChild(wrap);
+  $('chat').scrollTop = $('chat').scrollHeight;
+  return wrap.querySelector('.bubble');
+}
+
+function status(msg, isErr = false) {
+  const el = $('status-line');
+  el.textContent = msg || '';
+  el.style.color = isErr ? 'var(--err)' : 'var(--muted)';
+}
+
+async function send() {
+  if (busy) return;
+  if (!activeId) {
+    status('Create an engagement first (sidebar → + New engagement).', true);
+    return;
+  }
+  const input = $('input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = ''; input.style.height = 'auto';
+  busy = true;
+  updateComposerState();
+
+  // local slash commands render instantly
+  if (text.startsWith('/')) {
+    addMsg('user', text);
+    try {
+      const r = await api('/api/command', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      addMsg('assistant', r.text);
+      await loadEngagements(); await refreshFiles();
+    } catch (e) { addMsg('assistant', 'Error: ' + e.message); }
+    busy = false;
+    updateComposerState();
+    return;
+  }
+
+  addMsg('user', text);
+  status('Thinking…');
+  const bubble = addMsg('assistant', '…');
+  let acc = '';
+  const chat = $('chat');
+
+  try {
+    const resp = await fetch('/chat/stream', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ engagement_id: activeId, message: text, history, role: currentRole }),
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    if (!resp.body) throw new Error('No response body');
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      acc += dec.decode(value, { stream: true });
+      if (bubble) {
+        bubble.innerHTML = renderMd(acc) + '<span style="opacity:.5">▍</span>';
+        enhanceMermaid(bubble);
+        const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 120;
+        if (nearBottom) chat.scrollTop = chat.scrollHeight;
+      }
+    }
+    if (bubble) { bubble.innerHTML = renderMd(acc); enhanceMermaid(bubble); }
+    const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 120;
+    if (nearBottom) chat.scrollTop = chat.scrollHeight;
+    history.push({ role: 'user', content: text });
+    history.push({ role: 'assistant', content: acc });
+    if (history.length > 16) history = history.slice(-16);
+    status('');
+  } catch (e) {
+    if (bubble) { bubble.innerHTML = renderMd('⚠️ ' + (e.message || 'Request failed')); enhanceMermaid(bubble); }
+    status('Check that a model is loaded (open Model).', true);
+  }
+  busy = false;
+  updateComposerState();
+}
+
+/* ---------- attachments ---------- */
+$('btn-attach').onclick = () => $('file-input').click();
+$('file-input').onchange = async () => {
+  if (!activeId) { status('Create an engagement first.', true); return; }
+  for (const file of $('file-input').files) {
+    status('Ingesting ' + file.name + '…');
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('engagement_id', activeId);
+    try {
+      const r = await api('/upload', { method: 'POST', body: fd });
+      status(`Indexed ${file.name} — ${r.chunks_indexed} chunks.`);
+      addMsg('assistant', `📄 **${esc(file.name)}** ingested: ${r.chunks_indexed} chunks indexed. Ask me to review it.`);
+    } catch (e) { status('Upload failed: ' + e.message, true); }
+  }
+  $('file-input').value = '';
+  await refreshFiles();
+};
+
+/* ---------- delete engagement dialog ---------- */
+const dlgDelEng = $('dlg-del-eng');
+
+function confirmDeleteEngagement(e) {
+  pendingDeleteId = e.id;
+  const fileCount = e.files ? e.files.length : 0;
+  $('del-eng-info').innerHTML = `<strong>${esc(e.client_name)}</strong> — <strong>${esc(e.name)}</strong><br><span style="color:var(--muted)">Contains ${fileCount} file(s)</span>`;
+  dlgDelEng.showModal();
+}
+
+$('del-eng-confirm').onclick = async () => {
+  if (!pendingDeleteId) return;
+  const id = pendingDeleteId;
+  const wasActive = id === activeId;
+  dlgDelEng.close();
+  try {
+    await api('/engagements/' + id, { method: 'DELETE' });
+    if (wasActive) {
+      try { await api('/engagements/active/local', { method: 'DELETE' }); } catch {}
+      activeId = null;
+      restoreEmptyState();
+      history = [];
+      $('eng-title').textContent = 'No engagement selected';
+    }
+    await loadEngagements();
+    updateComposerState();
+    status('Engagement deleted.');
+  } catch (e) {
+    if (e.message.includes('404')) {
+      status('Engagement already gone.');
+      await loadEngagements();
+    } else {
+      status('Delete failed: ' + e.message, true);
+    }
+  }
+  pendingDeleteId = null;
+};
+
+/* ---------- new engagement dialog ---------- */
+const dlgNewEng = $('dlg-new-eng');
+const dlgModel = $('dlg-model');
+
+// Dialog close buttons
+document.querySelectorAll('.dlg-close').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const dialog = btn.closest('dialog');
+    if (dialog) dialog.close();
+  });
+});
+
+$('btn-new-eng').onclick = () => {
+  $('ne-client').style.borderColor = 'var(--border)';
+  $('ne-name').style.borderColor = 'var(--border)';
+  dlgNewEng.showModal();
+  $('ne-client').focus();
+};
+['ne-client', 'ne-name'].forEach(id => {
+  $(id).addEventListener('input', () => {
+    if ($(id).value.trim()) $(id).style.borderColor = 'var(--border)';
+  });
+});
+$('ne-create').onclick = async () => {
+  const client = $('ne-client').value.trim(), name = $('ne-name').value.trim();
+  let valid = true;
+  if (!client) {
+    $('ne-client').style.borderColor = 'var(--err)';
+    valid = false;
+  } else { $('ne-client').style.borderColor = 'var(--border)'; }
+  if (!name) {
+    $('ne-name').style.borderColor = 'var(--err)';
+    valid = false;
+  } else { $('ne-name').style.borderColor = 'var(--border)'; }
+  if (!valid) return;
+  try {
+    const eng = await api('/engagements', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_name: client, engagement_name: name, notes: $('ne-notes').value }),
+    });
+    dlgNewEng.close();
+    $('ne-client').value = $('ne-name').value = $('ne-notes').value = '';
+    await loadEngagements();
+    await activateEngagement(eng.id);
+    status(`Engagement "${eng.name}" created and activated.`);
+  } catch (e) { status('Create failed: ' + e.message, true); }
+};
+
+$('btn-close-eng').onclick = async () => {
+  if (!activeId) { status('No active engagement to close.', true); return; }
+  const eng = engagements.find(e => e.id === activeId);
+  if (!eng) return;
+  const confirmed = confirm(`Close engagement "${eng.client_name} — ${eng.name}"?\n\nThis marks the engagement closed. Documents and reports are kept.`);
+  if (!confirmed) return;
+  try {
+    await api(`/engagements/${activeId}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'closed' }),
+    });
+    await loadEngagements();
+    status('Engagement closed.');
+  } catch (e) {
+    status('Close failed: ' + e.message, true);
+  }
+};
+
+$('btn-open-reports').onclick = async () => {
+  try {
+    await api('/api/reports/open-folder', { method: 'POST' });
+    status('Reports folder opened.');
+  } catch (e) {
+    status('Could not open reports folder: ' + e.message, true);
+  }
+};
+
+/* ---------- model dialog ---------- */
+let hw = null, tiers = {}, suggested = null;
+$('model-btn').onclick = async () => {
+  await refreshModelDialog();
+  dlgModel.showModal();
+};
+
+async function refreshModelDialog() {
+  const st = await api('/api/model/status');
+  hw = st.hardware; tiers = st.tiers;
+  const suggestedTiers = st.suggested_tiers || {};
+  const suggestedChat = suggestedTiers.chat || st.suggested_tier;
+  $('hw-line').textContent = `Detected: ${hw.vram_gb > 0 ? hw.vram_gb + ' GB VRAM' : 'no NVIDIA GPU'} · ${hw.ram_gb} GB RAM → suggested: ${suggestedChat}`;
+  const list = $('tier-list');
+  list.innerHTML = '';
+  const roleGroups = [
+    { key: 'chat', label: 'Chat & analysis', roles: ['general'] },
+    { key: 'grc', label: 'GRC policy review', roles: ['grc'] },
+    { key: 'code', label: 'Code review', roles: ['code'] },
+    { key: 'osint', label: 'OSINT / CTI', roles: ['osint', 'cti'] },
+  ];
+  for (const group of roleGroups) {
+    const groupHeader = document.createElement('div');
+    groupHeader.style.cssText = 'font-size:12px;color:var(--muted);font-weight:600;margin:12px 0 6px;text-transform:uppercase;letter-spacing:.5px';
+    groupHeader.textContent = group.label;
+    list.appendChild(groupHeader);
+    const groupTiers = Object.entries(tiers).filter(([id, t]) => {
+      if (!t.roles || !Array.isArray(t.roles)) return false;
+      return t.roles.some(r => group.roles.includes(r));
+    });
+    if (!groupTiers.length) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color:var(--muted);font-size:12px;padding:6px 0';
+      empty.textContent = 'No tiers available for this role.';
+      list.appendChild(empty);
+      continue;
+    }
+    for (const [id, t] of groupTiers) {
+      const div = document.createElement('div');
+      const isRec = suggestedTiers[group.key] === id;
+      const isDisabled = t.min_vram_gb > 0 && hw.vram_gb < t.min_vram_gb;
+      div.className = 'tier-opt' + (isDisabled ? ' disabled' : '');
+      div.innerHTML = `
+        <div><div class="t-name">${esc(t.label)}
+          ${isRec ? '<span class="tag rec">Recommended</span>' : ''}
+          ${t.active ? '<span class="tag on">active</span>' : ''}
+        </div>
+        <div class="t-desc">${t.downloaded ? 'downloaded ✓' : 'will download from Hugging Face'}</div></div>
+        <div class="t-size">${t.size_gb} GB</div>`;
+      div.onclick = () => pickTier(id, t, div, isDisabled);
+      list.appendChild(div);
+    }
+  }
+  if (st.active_model) {
+    const p = document.createElement('div');
+    p.style.cssText = 'font-size:11px;color:var(--muted);margin-top:8px';
+    p.textContent = 'Active file: ' + st.active_model.split(/[\\\\/]/).pop();
+    list.appendChild(p);
+  }
+}
+
+async function pickTier(id, t, div, isDisabled) {
+  if (isDisabled || div.classList.contains('disabled')) {
+    status('This tier may not fit this machine — pick a smaller one.', true);
+    return;
+  }
+  if (t.downloaded) {
+    await api('/api/model/select', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: id }),
+    });
+    status('Model switched to ' + id + '. It loads on your next message.');
+    await refreshModelDialog();
+    await refreshHealth();
+    return;
+  }
+  // download flow
+  $('dl-progress').style.display = 'block';
+  $('dl-status').style.display = 'block';
+  $('dl-status').textContent = 'Downloading…';
+  await api(`/api/model/download/${id}`, { method: 'POST' });
+  const timer = setInterval(async () => {
+    const p = await api('/api/model/download/progress');
+    $('dl-progress').firstElementChild.style.width = Math.round((p.progress || 0) * 100) + '%';
+    $('dl-progress').setAttribute('aria-valuenow', String(Math.round((p.progress || 0) * 100)));
+    if (p.error) {
+      clearInterval(timer);
+      $('dl-status').textContent = 'Download failed: ' + p.error;
+      return;
+    }
+    if (p.done) {
+      clearInterval(timer);
+      $('dl-status').textContent = 'Download complete ✓ — model loads on next message.';
+      await refreshModelDialog();
+      await refreshHealth();
+    }
+  }, 800);
+}
+
+/* ---------- health dot ---------- */
+async function refreshHealth() {
+  try {
+    const h = await api('/health');
+    const dot = $('status-dot');
+    dot.className = h.status === 'ok' ? 'ok' : '';
+    dot.title = h.detail || 'Model ready';
+    if (h.status !== 'ok') status(h.detail || 'No model loaded yet — open Model.', false);
+  } catch {
+    $('status-dot').className = 'err';
+  }
+}
+
+/* ---------- composer ---------- */
+const input = $('input');
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 180) + 'px';
+});
+$('btn-send').onclick = send;
+
+/* startup */
+document.addEventListener('DOMContentLoaded', () => {
+  $('role-select').value = currentRole;
+  $('role-select').onchange = () => {
+    currentRole = $('role-select').value;
+    localStorage.setItem('fortis_role', currentRole);
+  };
+  loadEngagements();
+  refreshHealth();
+  updateComposerState();
+});
+</script>
+</body>
+</html>

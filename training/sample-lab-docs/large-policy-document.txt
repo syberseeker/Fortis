@@ -1,0 +1,252 @@
+# Enterprise Security Policy Document — Workshop Lab
+# Version 3.2 | Last Updated: January 2025
+# Classification: Internal Use Only
+
+---
+
+## 1. Acceptable Use Policy
+
+All employees, contractors, and third-party users must follow this Acceptable Use Policy. Access to company systems constitutes acknowledgment and acceptance of these terms.
+
+1.1. Company-owned devices must be used primarily for business purposes. Limited personal use is permitted provided it does not interfere with productivity or violate any other policy.
+
+1.2. Users must not install unauthorized software on company devices. All software must be approved by the IT department and installed through approved channels.
+
+1.3. Users must not share their login credentials with anyone, including coworkers, family members, or IT staff. Each user is responsible for all activity under their account.
+
+1.4. All company data must be stored on approved platforms. Personal cloud storage accounts, personal email, and unauthorized removable media must not be used for company data.
+
+1.5. Users must report suspected security incidents immediately to the Security Operations Center at security@company.com or by calling the 24/7 hotline.
+
+---
+
+## 2. Access Control Policy
+
+2.1. **Principle of Least Privilege:** Users must be granted only the minimum level of access needed to perform their job functions.
+
+2.2. **Account Provisioning:** New accounts must be provisioned through the HR-IT workflow. Manager approval is required for all access requests.
+
+2.3. **Access Reviews:** Quarterly access reviews must be conducted by department managers. Privileged access reviews must be conducted monthly.
+
+2.4. **Termination:** Access must be revoked within 4 hours of employment termination for involuntary separations and within 24 hours for voluntary separations.
+
+2.5. **Shared Accounts:** Shared or generic accounts are prohibited except where operationally required and approved by the CISO. Shared accounts must be logged in an auditable vault.
+
+2.6. **Privileged Access:** Privileged accounts must use separate credentials from standard user accounts. Privileged access sessions must be recorded.
+
+2.7. **Remote Access:** All remote access must go through the corporate VPN with multi-factor authentication. Direct RDP/SSH exposure to the internet is prohibited.
+
+2.8. **Service Accounts:** Service accounts must be inventoried, have clearly documented owners, and use API keys or certificates instead of passwords where possible.
+
+2.9. **Third-Party Access:** Third-party vendor access must be time-limited, monitored, and reviewed after each engagement. Vendor accounts must be disabled upon project completion.
+
+---
+
+## 3. Password and Authentication Policy
+
+3.1. **Password Complexity:** Minimum 14 characters. Must include at least one uppercase letter, one lowercase letter, one number, and one special character.
+
+3.2. **Password Rotation:** User passwords must be rotated every 90 days. Service account passwords must be rotated every 30 days.
+
+3.3. **Password History:** The last 24 passwords must be remembered and cannot be reused.
+
+3.4. **Multi-Factor Authentication:** MFA is required for all users accessing company resources remotely. MFA is mandatory for all privileged accounts.
+
+3.5. **Acceptable MFA Methods:** Hardware tokens (YubiKey), authenticator apps (Google Authenticator, Authy), push notifications through approved apps. SMS-based MFA is prohibited.
+
+3.6. **Session Management:** Sessions must time out after 30 minutes of inactivity. Concurrent sessions are limited to 3 per user.
+
+3.7. **Account Lockout:** Accounts must be locked after 5 failed authentication attempts. Lockout duration is 30 minutes or until manually unlocked by an administrator.
+
+3.8. **Single Sign-On:** All cloud applications must support SAML 2.0 or OIDC for SSO integration with the corporate identity provider.
+
+---
+
+## 4. Data Classification and Handling
+
+4.1. **Classification Levels:**
+- **Public:** Information approved for public disclosure
+- **Internal:** General business information not intended for public release
+- **Confidential:** Sensitive business information requiring protection
+- **Restricted:** Highly sensitive data subject to regulatory requirements (PII, PHI, payment data, trade secrets)
+
+4.2. **Labeling:** All documents and data stores must be labeled with their classification level.
+
+4.3. **Encryption at Rest:** Confidential and Restricted data must be encrypted at rest using AES-256 or equivalent.
+
+4.4. **Encryption in Transit:** All data transmission must use TLS 1.2 or higher. Internal service communication must use mutual TLS where feasible.
+
+4.5. **Data Retention:** Data must be retained according to the data retention schedule. Expired data must be securely deleted using approved methods.
+
+4.6. **Data Destruction:** Physical media must be sanitized using NIST SP 800-88 methods. Digital data must be overwritten or cryptographically erased.
+
+4.7. **Backup:** Critical data must be backed up daily. Backups must be encrypted and stored offsite. Backup restoration must be tested quarterly.
+
+4.8. **Data Loss Prevention:** DLP controls must be implemented for Confidential and Restricted data leaving the corporate network.
+
+4.9. **Portable Media:** USB drives and other removable media must be encrypted. Auto-run features must be disabled on all endpoints.
+
+---
+
+## 5. Network Security Policy
+
+5.1. **Network Segmentation:** The network must be segmented into security zones: DMZ, internal, production, development, and management. Traffic between zones must be controlled by firewalls with default-deny rules.
+
+5.2. **Firewall Management:** All firewall changes must go through the change management process. Firewall rules must be reviewed quarterly. Unused rules must be removed.
+
+5.3. **Wireless Security:** Corporate wireless networks must use WPA3-Enterprise with RADIUS authentication. Guest networks must be isolated from the internal network.
+
+5.4. **VPN:** All remote connections must use the corporate VPN. Split tunneling is prohibited for devices accessing Restricted data.
+
+5.5. **DNS Security:** DNSSEC must be enabled for authoritative zones. DNS filtering must be implemented to block known malicious domains.
+
+5.6. **Network Monitoring:** All network traffic must be monitored. IDS/IPS systems must be deployed at network boundaries and critical internal segments.
+
+5.7. **Port Security:** Unused network ports must be disabled. MAC address filtering must be used on sensitive network segments.
+
+5.8. **Cloud Network Security:** Cloud VPCs must follow the principle of least privilege for security groups and network ACLs. No public-facing resources without WAF protection.
+
+---
+
+## 6. Endpoint Security Policy
+
+6.1. **Operating Systems:** Only supported operating systems with current security patches may be used. End-of-life systems must be isolated or decommissioned.
+
+6.2. **Endpoint Protection:** All endpoints must have approved endpoint detection and response (EDR) software installed and running.
+
+6.3. **Patch Management:** Critical patches must be applied within 72 hours. High-severity patches within 7 days. Medium and low patches within 30 days.
+
+6.4. **Disk Encryption:** All laptops and mobile devices must use full-disk encryption (BitLocker, FileVault, or LUKS).
+
+6.5. **Mobile Device Management:** All mobile devices accessing company data must be enrolled in MDM. Remote wipe capability is required.
+
+6.6. **Browser Security:** Only approved browsers may be used. Browser extensions must be whitelisted. Automatic updates must be enabled.
+
+6.7. **Removable Media:** Auto-run must be disabled. Approved encryption-capable USB devices only. Devices must be scanned before use.
+
+---
+
+## 7. Application Security Policy
+
+7.1. **Secure Development Lifecycle:** All applications must follow a documented SDL including threat modeling, secure coding training, static analysis, dynamic analysis, and penetration testing.
+
+7.2. **Code Review:** All code changes must undergo peer review before merging. Security-critical changes require review by the security team.
+
+7.3. **Dependency Management:** Third-party libraries and dependencies must be tracked in a Software Bill of Materials (SBOM). Vulnerable dependencies must be updated within SLA timelines.
+
+7.4. **API Security:** All APIs must use authentication (OAuth 2.0 or API keys). Rate limiting must be implemented. Input validation is mandatory.
+
+7.5. **Web Application Security:** All web applications must implement OWASP Top 10 mitigations. WAF must be deployed for internet-facing applications.
+
+7.6. **Container Security:** Container images must be scanned for vulnerabilities before deployment. Only approved base images may be used. Containers must not run as root.
+
+7.7. **CI/CD Pipeline Security:** Build pipelines must include SAST, DAST, and SCA scanning. Secrets must not be hardcoded in pipelines. Build artifacts must be signed.
+
+---
+
+## 8. Incident Response Policy
+
+8.1. **Incident Classification:**
+- **P1 (Critical):** Active breach, ransomware, data exfiltration
+- **P2 (High):** Confirmed compromise, malware outbreak
+- **P3 (Medium):** Suspicious activity, policy violation
+- **P4 (Low):** Minor security event, informational
+
+8.2. **Response Times:**
+- P1: 15-minute response, all-hands activation
+- P2: 1-hour response, security team activation
+- P3: 4-hour response, analyst investigation
+- P4: Next business day
+
+8.3. **Escalation:** Incidents must be escalated to the CISO within 30 minutes for P1/P2 events. Legal must be engaged for potential data breaches within 2 hours.
+
+8.4. **Evidence Preservation:** Digital evidence must be forensically preserved. Chain of custody must be documented. Evidence must not be altered.
+
+8.5. **Communication:** External communications about incidents must be approved by Legal and Communications. Customers must be notified within 72 hours of confirmed data breaches per applicable regulations.
+
+8.6. **Post-Incident:** A blameless post-incident review must be conducted within 5 business days of incident closure. Action items must be tracked to completion.
+
+---
+
+## 9. Vulnerability Management Policy
+
+9.1. **Scanning:** Internal vulnerability scans must be conducted weekly. External vulnerability scans must be conducted weekly by an approved third party.
+
+9.2. **Remediation Timelines:**
+- Critical: 72 hours
+- High: 7 days
+- Medium: 30 days
+- Low: 90 days
+
+9.3. **Penetration Testing:** Annual penetration tests must be conducted by qualified external firms. Internal penetration tests must be conducted semi-annually.
+
+9.4. **Bug Bounty:** A responsible disclosure program must be maintained. Security researchers must be able to report vulnerabilities through a secure channel.
+
+9.5. **Risk Acceptance:** Any vulnerability that cannot be remediated within SLA must have a documented risk acceptance signed by the asset owner and the CISO.
+
+---
+
+## 10. Cloud Security Policy
+
+10.1. **Cloud Provider Approval:** Only approved cloud providers (AWS, Azure, GCP) may be used. Shadow IT cloud services are prohibited.
+
+10.2. **Identity Federation:** All cloud access must federate through the corporate identity provider. Direct cloud console access must be limited to administrators.
+
+10.3. **Resource Tagging:** All cloud resources must be tagged with: owner, environment, classification level, cost center.
+
+10.4. **Storage Security:** S3 buckets, Azure Blob containers, and GCS buckets must not be publicly accessible by default. Public access must be approved and logged.
+
+10.5. **Logging:** CloudTrail/Activity Log/Audit Log must be enabled in all regions/zones. Logs must be centralized in the SIEM.
+
+10.6. **Infrastructure as Code:** Cloud infrastructure must be defined in IaC (Terraform, CloudFormation). Manual changes must be avoided and documented when unavoidable.
+
+10.7. **Cost Controls:** Budget alerts must be configured. Resource lifecycle policies must prevent orphaned resources.
+
+---
+
+## 11. Physical Security Policy
+
+11.1. **Facility Access:** Data centers and server rooms must require badge + biometric access. Visitor access must be escorted and logged.
+
+11.2. **Environmental Controls:** Temperature and humidity must be monitored. Fire suppression and water detection systems must be operational.
+
+11.3. **Surveillance:** CCTV must cover all entry points, server rooms, and sensitive areas. Recordings must be retained for 90 days.
+
+11.4. **Clean Desk:** Sensitive documents must not be left unattended. Whiteboards must be erased after meetings.
+
+11.5. **Secure Disposal:** Paper documents must be cross-cut shredded. Electronic media must be degaussed or physically destroyed.
+
+---
+
+## 12. Training and Awareness Policy
+
+12.1. **Onboarding:** All new employees must complete security awareness training within 30 days of hire.
+
+12.2. **Annual Training:** All employees must complete annual security awareness training. Completion is tracked and reported to the board.
+
+12.3. **Phishing Simulations:** Monthly phishing simulations must be conducted. Users who fail must complete remedial training.
+
+12.4. **Role-Based Training:** Developers must receive secure coding training annually. System administrators must receive infrastructure security training annually.
+
+12.5. **Metrics:** Training completion rates, phishing click rates, and incident report rates must be tracked and reported quarterly.
+
+---
+
+## Appendix A: Related Standards and Frameworks
+
+This policy is informed by and aligns with:
+- NIST Cybersecurity Framework 2.0
+- ISO 27001:2022
+- CIS Controls v8.1
+- OWASP Top 10:2025
+- SOC 2 Type II
+
+## Appendix B: Revision History
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | 2022-01-15 | J. Smith | Initial release |
+| 2.0 | 2023-06-01 | A. Jones | Added cloud security policy |
+| 3.0 | 2024-03-15 | M. Chen | Added container/CI/CD security |
+| 3.1 | 2024-09-01 | J. Smith | Updated MFA requirements |
+| 3.2 | 2025-01-15 | A. Jones | Updated password policy, added DLP |

@@ -1,0 +1,101 @@
+! ============================================================
+! Sample Firewall Configuration — Workshop Lab Document
+! Intentionally contains multiple security issues for analysis
+! ============================================================
+
+! Global Configuration
+hostname: fw-prod-01
+management_password: admin123
+enable_secret: cisco123
+snmp_community: public
+syslog_server: 0.0.0.0
+
+! ---- INTERFACES ----
+interface GigabitEthernet0/0
+ description WAN_Uplink
+ ip address 203.0.113.5 255.255.255.0
+ no shutdown
+
+interface GigabitEthernet0/1
+ description LAN_Internal
+ ip address 10.0.0.1 255.255.255.0
+ no shutdown
+
+interface GigabitEthernet0/2
+ description DMZ
+ ip address 172.16.0.1 255.255.255.0
+ no shutdown
+
+! ---- ACCESS CONTROL LISTS ----
+! ACL allowing all inbound traffic (dangerous)
+ip access-list extended PERMIT_ALL
+ permit ip any any log
+
+! Apply to WAN interface — allows everything from the internet
+interface GigabitEthernet0/0
+ ip access-group PERMIT_ALL in
+
+! ---- NAT / PAT ----
+ip nat inside source list NAT_ACL interface GigabitEthernet0/0 overload
+ip access-list extended NAT_ACL
+ permit ip 10.0.0.0 0.255.255.255 any
+ permit ip 172.16.0.0 0.255.255.255 any
+
+! ---- VPN CONFIGURATION ----
+! Pre-shared key in plaintext
+crypto isakmp policy 10
+ encryption des
+ hash md5
+ authentication pre-share
+ group 2
+
+crypto isakmp key mysecretpass address 0.0.0.0
+
+! ---- ROUTING ----
+ip route 0.0.0.0 0.0.0.0 203.0.113.1
+! Static route to sensitive network
+ip route 192.168.100.0 255.255.255.0 10.0.0.254
+
+! ---- SERVICES ----
+! Telnet enabled (unencrypted)
+line vty 0 4
+ transport input telnet
+ login local
+
+username admin password 0 P@ssw0rd123
+
+! HTTP server enabled
+ip http server
+ip http authentication local
+
+! SSH configured but with weak crypto
+ip ssh version 1
+ip ssh time-out 120
+ip ssh authentication-retries 5
+
+! ---- LOGGING ----
+! Minimal logging — no remote syslog configured
+logging buffered 512
+no logging host
+
+! ---- SNMP ----
+! SNMPv2 with community string (no encryption)
+snmp-server community public RO
+snmp-server enable traps
+
+! ---- DNS ----
+ip name-server 8.8.8.8
+ip name-server 8.8.4.4
+
+! ---- DHCP ----
+ip dhcp pool LAN_POOL
+ network 10.0.0.0 255.255.255.0
+ default-router 10.0.0.1
+ dns-server 8.8.8.8
+ lease 7
+
+! ---- ROUTING PROTOCOLS ----
+router ospf 1
+ network 10.0.0.0 0.0.0.255 area 0
+ network 172.16.0.0 0.0.255.255 area 0
+! No authentication configured on OSPF

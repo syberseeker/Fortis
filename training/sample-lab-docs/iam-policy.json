@@ -1,0 +1,97 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "FullAdminAccess",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowAllS3Buckets",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::*:root"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowLambdaInvoke",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowIAMUserCreation",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": [
+        "iam:CreateUser",
+        "iam:CreateAccessKey",
+        "iam:AttachUserPolicy",
+        "iam:PutUserPolicy"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyMFASetup",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": [
+        "iam:CreateVirtualMFADevice",
+        "iam:EnableMFADevice",
+        "iam:ResyncMFADevice"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowEC2FullAccess",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "ec2:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowRDSFullAccess",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "rds:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowSecretsManagerRead",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowKMSDecrypt",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowCloudTrailWrite",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": [
+        "cloudtrail:StopLogging",
+        "cloudtrail:DeleteTrail"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

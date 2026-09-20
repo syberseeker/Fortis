@@ -1,0 +1,5 @@
+flowchart TD
+    Internet["Internet"] --> FW["Perimeter Firewall"]
+    FW --> Web["Web Server"]
+    Web --> DB[("Customer Database")]
+    DB -.->|encrypted backups| Backup["Backup Storage"]

@@ -1,0 +1,81 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cyber-advisor-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      - OLLAMA_MAX_LOADED_MODELS=1
+
+  backend:
+    build: ./backend
+    container_name: cyber-advisor-backend
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    ports:
+      - "8010:8010"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      - CHROMA_PERSIST_DIR=/data/chroma
+      - MAX_CONTEXT_TOKENS=${MAX_CONTEXT_TOKENS:-6000}
+    volumes:
+      - ./backend/data:/data
+      - upload_data:/data/uploads
+      - report_data:/data/reports
+
+  openwebui:
+    build: ./openwebui
+    container_name: cyber-advisor-webui
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - ollama
+      - pipelines
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PIPELINES_API_BASE_URL=http://pipelines:9099
+      - PIPELINES_API_KEY=${PIPELINES_API_KEY:-fortis-pipeline-key}
+      - WEBUI_NAME=Cybersecurity Advisor
+      - ENABLE_PIPELINES=true
+      - DEFAULT_PROMPT_SUGGESTIONS=[]
+      - DEFAULT_USER_ROLE=pending
+      - DEFAULT_MODELS=qwen3:8b:latest
+      - WEBUI_ADMIN_NAME=admin
+      - WEBUI_ADMIN_EMAIL=admin@cyberadvisor.local
+      - WEBUI_ADMIN_PASSWORD=admin123
+    volumes:
+      - openwebui_data:/app/backend/data
+
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    container_name: cyber-advisor-pipelines
+    restart: unless-stopped
+    ports:
+      - "9099:9099"
+    environment:
+      - PIPELINES_API_KEY=${PIPELINES_API_KEY:-fortis-pipeline-key}
+    volumes:
+      - pipeline_data:/app/backend/data
+
+volumes:
+  ollama_data:
+  openwebui_data:
+  upload_data:
+  report_data:
+  pipeline_data:

@@ -1,0 +1,7 @@
+sequenceDiagram
+    participant Client["External Client"]
+    participant FW["Firewall"]
+    participant Server["Application Server"]
+    Client->>FW: Request
+    FW->>Server: Forward
+    Server-->>Client: Response

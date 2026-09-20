@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.llama-cuda-ok
+backend/data/
+desktop/data/
+training.zip
+.pytest_cache/
+fortis-out.log
+fortis-err.log

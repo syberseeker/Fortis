@@ -1,0 +1,37 @@
+# Tiered Advanced RAG Upgrade — COMPLETE
+
+Status: implemented and green (desktop suite 123 passed). Supersedes the
+earlier Qwen2.5/Ollama migration plan in this file.
+
+## What landed (core/ stack)
+
+- RAG_LEVEL tiers: basic | standard (default) | full — core/config.py
+- Hybrid retrieval: dense (bge-small) + BM25 keyword scoring fused with
+  reciprocal rank fusion — core/bm25.py (new), core/vectorstore.py
+- Query condensation for follow-ups: heuristic (standard) or one LLM call
+  (full), graceful fallback — core/condense.py (new)
+- Cross-encoder reranking: bge-reranker-base on CPU, auto-disabled below
+  8GB RAM, broken-flag fallback — core/rerank.py (new)
+- Contextual chunk enrichment: [From file — pages N] headers at ingestion —
+  core/ingestion.py chunk_text_enriched()
+- Wiring: build_context_block dispatches on tier; build_chat_messages gained
+  retrieval_query kwarg; chat routers + server/orchestration.py condense
+  before retrieval
+- Security fixes from audit: engagement-scoped BM25 cache + where_pred,
+  bounded marker regex, sanitized filenames in prompt headers, condense
+  fallback logging, env parsing hardened (_env_int/_env_float)
+- Tests: desktop/tests/test_rag_upgrade.py (18 offline tests) covering
+  hybrid retrieval, cross-engagement isolation, tier gating, condensation,
+  rerank fallback, enrichment, hostile-input performance
+
+## Environment
+
+- RAG_LEVEL=standard (basic|standard|full)
+- RERANK_BACKEND=sentence-transformers ("none" disables)
+- RERANK_MODEL / RERANK_CANDIDATE_MULTIPLIER / RERANK_MIN_RAM_GB / BM25_RRF_K
+
+## Remaining follow-ups
+
+- Legacy backend/app/ stack: mirror the RAG upgrade if the Docker/Open WebUI
+  deployment is still needed
+- Live smoke test of bge-reranker-base scoring (network-dependent)
