@@ -9,4 +9,4 @@ desktop/data/
 training.zip
 .pytest_cache/
 fortis-out.log
-fortis-err.log
+fortis-err.log.openchamber/
