@@ -5,13 +5,13 @@ rights: participants run one script and a window opens.
 
 ```
 Participant setup:
-  Windows:   double-click  setup.ps1        (or: powershell -ExecutionPolicy Bypass -File setup.ps1)
+  Windows:      powershell -ExecutionPolicy Bypass -File setup.ps1
   macOS/Linux:  bash setup.sh
 ```
 
 The script: checks Python → creates a virtual environment → installs
 dependencies → installs the llama.cpp engine (GPU build if an NVIDIA card is
-present, CPU otherwise) → runs 14 offline self-tests → opens Fortis.
+present, CPU otherwise) → runs the offline self-test suite → opens Fortis.
 
 ## First run inside the app
 
@@ -23,7 +23,10 @@ present, CPU otherwise) → runs 14 offline self-tests → opens Fortis.
    | Qwen3.5 0.8B | ~1.0 GB | any machine |
    | Qwen3.5 2B | ~2.7 GB | 8 GB RAM |
    | Qwen3.5 4B *(default)* | ~3.4 GB | 4 GB+ VRAM or 16 GB RAM |
-   | Qwen3.5 9B | ~6.6 GB | 8 GB+ VRAM only |
+   | Llama 3.1 8B | ~3.9 GB | 5.5 GB+ VRAM (RTX 4050-class), 12k context |
+
+   The picker offers all nine tiers — coder, DeepSeek-R1, and other specialist
+   models are listed in the **Model Tiers** table in `03-syllabus.md`.
 
 2. Click a tier → downloads once (~3.4 GB for 4B, resumable) → send any
    message; the model loads automatically.
@@ -54,14 +57,16 @@ Client :: Name`, `/use <id>`, `/whoami`, `/close-engagement`.
 - **Prep:** run the setup script on your demo machine before the session and
   pre-download the 4B tier — venue Wi-Fi then only matters for participants'
   own downloads.
-- **Under-the-hood module:** the old container architecture
-  (`docker-compose.yml`, backend/, `openwebui_pipeline/`) is still in this
-  repo and still runs — use it for the "how would you build this as a
-  service" module. The desktop app reuses the same RAG core (`core/`),
-  report renderers, and engagement store, so concepts transfer 1:1.
-- **Offline testing:** `EMBEDDING_BACKEND=hash-stub FORTIS_LLM_BACKEND=stub
-  python -m pytest desktop/tests/` validates the whole pipeline with no
-  model and no network.
+- **Under-the-hood module:** the desktop app is a thin shell over the
+  battle-tested RAG core (`core/`) - report renderers and engagement
+  store - the same API and schemas throughout.
+- **Offline testing:** the PowerShell commands below validate the whole
+  pipeline with no model and no network:
+
+  ```powershell
+  $env:EMBEDDING_BACKEND = "hash-stub"; $env:FORTIS_LLM_BACKEND = "stub"
+  python -m pytest desktop\tests\ -q
+  ```
 - **Headless demo:** `python -m server.app --port 8757` serves the same UI
   at `http://127.0.0.1:8757` (useful when screen-sharing a browser).
 
@@ -72,7 +77,7 @@ Client :: Name`, `/use <id>`, `/whoami`, `/close-engagement`.
 | `python` not found (Windows) | Reinstall Python, tick **Add to PATH** |
 | Setup script blocked (Windows) | `powershell -ExecutionPolicy Bypass -File setup.ps1` |
 | Very slow first answer | The model loads on first use (10–60 s). Later answers are faster. |
-| 9B tier greyed out | GPU has < 8 GB VRAM — use 4B |
+| High-VRAM tier greyed out | GPU is below that tier's minimum VRAM — pick a smaller tier (e.g. the 4B default) |
 | Answers are stub/placeholder text | No model downloaded yet — open **⚙ Model** |
 | Report link doesn't download | The browser blocked it — files are in the reports folder (sidebar button) |
 | Apple Silicon (M1–M4) | Works CPU-only via llama.cpp; 4B is the practical ceiling |

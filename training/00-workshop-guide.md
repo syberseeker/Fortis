@@ -1,7 +1,12 @@
 # Workshop: How to Build Your Own AI Cybersecurity Advisor
 
+> **Builder-level guide.** This document walks through the architecture and
+> code. For the end-user
+> half-day workshop (no coding), follow `03-syllabus.md` with labs from
+> `01-lab-exercises.md` instead.
+
 **Duration:** 3-4 hours (with breaks)
-**Level:** Intermediate — assumes basic Python, Docker, and networking knowledge
+**Level:** Intermediate — assumes basic Python and networking knowledge
 **Goal:** Build a fully local, GPU-accelerated cybersecurity advisory tool that ingests documents, maps findings to security frameworks, and generates professional reports.
 
 ---
@@ -19,14 +24,20 @@ A system called **Fortis** — an AI cybersecurity consultant that:
 ### Architecture Overview
 
 ```
-┌─────────────┐      ┌──────────────────────┐      ┌─────────────┐
-│  Open WebUI │◄────►│  Backend (FastAPI)   │◄────►│   Ollama    │
-│  (chat UI + │ pipe │  - ingestion         │      │  (LLM, GPU) │
-│  persona)   │      │  - Chroma vector DB  │      └─────────────┘
-└─────────────┘      │  - RAG retrieval     │
-                     │  - report generation │
-                     │    (docx/pptx/pdf)   │
-                     └──────────────────────┘
+```
+┌──────────────────┐      ┌──────────────────────┐      ┌───────────────┐
+│  Chat UI         │◄────►│  server/ (FastAPI)   │◄────►│  engine/      │
+│  desktop window  │ http │  - orchestration     │      │  llama.cpp    │
+│  or browser      │      │  - upload/chat/report│      │  Qwen3.5 GGUF │
+└──────────────────┘      └──────────────────────┘      └───────────────┘
+                                   │
+                          ┌────────▼─────────┐
+                          │  core/           │
+                          │  - ChromaDB      │
+                          │  - BM25 + rerank │
+                          │  - RAG + persona │
+                          │  - report output │
+                          └──────────────────┘
 ```
 
 ### Hardware Requirements
@@ -45,24 +56,24 @@ A system called **Fortis** — an AI cybersecurity consultant that:
 ### Module 1: Foundations (45 min)
 1. Why local AI for cybersecurity? (privacy, compliance, air-gapped environments)
 2. RAG architecture explained — why not just use ChatGPT?
-3. Component tour: Ollama, FastAPI, ChromaDB, Open WebUI
+3. Component tour: engine, FastAPI, ChromaDB, chat UI
 
 ### Module 2: Infrastructure Setup (30 min)
-4. Docker Compose orchestration explained
+4. Local stack setup and launch (setup.ps1 / setup.sh)
 5. Pulling the LLM and configuring the embedding model
 6. Verifying the stack is running
 
-### Module 3: Backend Deep Dive (60 min)
+### Module 3: RAG Core Deep Dive
 7. **File Ingestion Pipeline** — parsing PDFs, DOCX, configs, code
 8. **Embeddings & Vector Store** — how documents become searchable
 9. **RAG Retrieval** — building context for the LLM
-10. **The LLM Client** — talking to Ollama
+10. **The LLM Engine** — talking to llama.cpp
 11. **Analysis Engine** — flat vs. map-reduce for large documents
 12. **Report Generation** — structured output into DOCX/PPTX/PDF
 
 ### Module 4: Frontend & Integration (30 min)
-13. Open WebUI customization and persona injection
-14. The Pipeline — connecting UI to backend
+13. Chat UI and persona injection
+14. Orchestration — connecting UI to the RAG core
 15. Engagement management (persistent client sessions)
 
 ### Module 5: Hands-On Labs (45 min)
@@ -120,71 +131,59 @@ The flow:
 
 | Component | Role | Technology |
 |-----------|------|------------|
-| LLM | Text generation | Ollama + qwen2.5:3b (local, GPU) |
+| LLM | Text generation | llama.cpp + Qwen3.5 GGUF (local) |
 | Embeddings | Convert text to vectors | bge-small-en-v1.5 (CPU) |
 | Vector Store | Store and search vectors | ChromaDB (persistent, local) |
-| Backend | API, ingestion, RAG, reports | FastAPI (Python) |
-| Frontend | Chat interface, persona | Open WebUI + custom pipeline |
-| Orchestration | Container management | Docker Compose |
+| RAG core | Ingestion, RAG, reports | core/ (Python) |
+| Frontend | Chat interface, persona | FastAPI static UI + pywebview |
+| Orchestration | Routing, guardrails, reports | server/orchestration.py |
 
 ---
 
-## Module 2: Infrastructure Setup
+## Module 2: Local Setup
 
-### docker-compose.yml Explained
+### How the Stack Runs
 
-The system runs as four Docker containers:
+Everything is a plain Python process — no Docker:
 
-```yaml
-services:
-  ollama:       # GPU-accelerated LLM inference
-  backend:      # FastAPI app (CPU — embeddings, ingestion, reports)
-  openwebui:    # Chat UI with cybersecurity persona
-  pipelines:    # Open WebUI pipeline runtime (connects UI → backend)
+```
+core/     RAG library: ingestion → ChromaDB → BM25/rerank → context
+engine/   llama.cpp runtime: local Qwen3.5 GGUF, GPU offload auto-detected
+server/   FastAPI app + orchestration + static chat UI
+desktop/  pywebview launcher (the "app window")
 ```
 
 Key design decisions:
-- **Ollama gets the GPU** — embeddings run on CPU intentionally so 100% of VRAM goes to the LLM
-- **Backend is CPU-only** — keeps costs down, simplifies deployment
-- **Persistent volumes** — ChromaDB data, uploaded files, and reports survive container restarts
+- **LLM runs in-process** — llama.cpp inside the Python app, no HTTP hop
+- **GPU offload auto-detected** — falls back to CPU on modest hardware
+- **Local data only** — ChromaDB, uploads, and SQLite store live in `data/`
 
 ### Step-by-Step Setup
 
-```bash
-# 1. Clone and configure
-cp .env.example .env
+```powershell
+# 1. One-command setup + launch (creates .venv, installs deps, downloads model)
+powershell -ExecutionPolicy Bypass -File setup.ps1
 
-# 2. Start everything
-docker compose up -d --build
-
-# 3. Pull the LLM model (first time only, ~1.9GB)
-docker exec -it fortis-ollama ollama pull qwen2.5:3b
-
-# 4. Verify
-curl http://localhost:8010/health
+# 2. Verify — the desktop window opens, or headless:
+python -m server.app --port 8757
+curl http://127.0.0.1:8757/health
 # Should return: {"status": "ok", "frameworks_loaded": ["NIST_CSF", ...]}
-
-# 5. Open the UI
-# Navigate to http://localhost:3000
-# In Open WebUI: Settings → Pipelines → install fortis_pipe.py
 ```
 
 ### Understanding the .env Configuration
 
 ```bash
-OLLAMA_MODEL=qwen2.5:3b           # The LLM model (3.1B params, ~2.5GB VRAM)
+FORTIS_LLM_BACKEND=auto            # llama | stub | auto
 EMBEDDING_MODEL=BAAI/bge-small-en-v1.5  # Embedding model (runs on CPU)
 MAX_CONTEXT_TOKENS=6000            # Max tokens sent to LLM per request
-OLLAMA_NUM_PARALLEL=1              # Concurrent LLM requests (lower = less RAM)
+RAG_LEVEL=standard                 # basic | standard | full retrieval tiers
 ```
 
----
-
-## Module 3: Backend Deep Dive
+## Module 3: RAG Core Deep Dive
 
 ### 3.1 File Ingestion Pipeline
 
-**File:** `backend/app/ingestion.py`
+**File:** `core/ingestion.py`
 
 The ingestion pipeline converts any uploaded file into plain text, then chunks it for embedding.
 
@@ -237,7 +236,7 @@ def chunk_text(text, chunk_size_tokens=500, overlap_tokens=75):
 
 ### 3.2 Embeddings & Vector Store
 
-**Files:** `backend/app/embeddings.py`, `backend/app/vectorstore.py`
+**Files:** `core/embeddings.py`, `core/vectorstore.py`
 
 **Embeddings** convert text into numerical vectors (384-dimensional for bge-small-en-v1.5) that capture semantic meaning. Similar concepts get similar vectors.
 
@@ -273,7 +272,7 @@ def query_user_documents(engagement_id, query, top_k=6):
 
 ### 3.3 RAG Retrieval — Building Context
 
-**File:** `backend/app/rag.py`
+**File:** `core/rag.py`
 
 The RAG system builds a context block from two retrieval sources:
 
@@ -310,34 +309,34 @@ You are Fortis, a senior cybersecurity consultant AI.
 - Refuse non-cybersecurity questions
 ```
 
-### 3.4 The LLM Client
+### 3.4 The LLM Engine
 
-**File:** `backend/app/llm.py`
+**File:** `engine/llama_engine.py`
 
-A thin async wrapper around Ollama's HTTP API:
+A local llama.cpp backend running a Qwen3.5 GGUF in-process — no Ollama,
+no HTTP hop. The chat template is applied by llama.cpp via
+`create_chat_completion`;
 
 ```python
-async def chat(messages, temperature=0.2, json_mode=False):
-    payload = {
-        "model": settings.ollama_model,
-        "messages": messages,
-        "stream": False,
-        "options": {"temperature": temperature},
-    }
-    if json_mode:
-        payload["format"] = "json"  # Ollama constrains output to valid JSON
-    
-    resp = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
-    return resp.json()["message"]["content"]
+# engine/llama_engine.py — chat entry point (simplified)
+def chat(messages, temperature=0.2, max_tokens=None):
+    model = _get_or_load_model()   # lazy-load inside a lock, with warm-up
+    out = model.create_chat_completion(
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        stop=_STOP_TOKENS,
+    )
+    return out["choices"][0]["message"]["content"]
 ```
 
 **Two modes:**
-- `chat()` — single completion, used for report generation (JSON mode)
-- `chat_stream()` — async generator, used for streaming chat responses to the UI
+- `chat()` — single completion, used for report generation
+- `chat_stream()` — generator, used for streaming chat responses to the UI
 
 ### 3.5 Analysis Engine — Flat vs. Map-Reduce
 
-**File:** `backend/app/analysis.py`
+**File:** `core/analysis.py`
 
 This is the most sophisticated component. Report generation uses two strategies:
 
@@ -390,7 +389,7 @@ async def generate_security_report(engagement_id, focus_instructions=""):
 
 ### 3.6 Report Generation
 
-**Files:** `backend/app/reports/`
+**Files:** `core/reports/`
 
 The structured `SecurityReport` Pydantic model is rendered into three formats:
 
@@ -426,44 +425,44 @@ class SecurityReport(BaseModel):
 
 ---
 
-## Module 4: Frontend & Integration
+## Module 4: UI & Integration
 
-### 4.1 Open WebUI Customization
+### 4.1 The Chat UI
 
-**File:** `openwebui/Dockerfile`
+**File:** `server/static/index.html`
 
-Open WebUI is a Docker image with a custom favicon. The real customization is the pipeline.
+The chat UI is a static page served by FastAPI (or wrapped by pywebview in
+the desktop app). Streaming responses, markdown tables, and the engagement
+sidebar are rendered client-side; vendor libraries are bundled locally.
 
-### 4.2 The Pipeline — Connecting UI to Backend
+### 4.2 Orchestration — Connecting UI to the RAG Core
 
-**File:** `openwebui_pipeline/fortis_pipe.py`
+**File:** `server/orchestration.py`
 
-The pipeline is a Python class that Open WebUI calls on every chat message. It's the glue layer that:
+The orchestration layer is the glue between the chat route and the RAG core:
 
 1. **Intercepts** the user message before it reaches the LLM
 2. **Routes** engagement commands (`/new-engagement`, `/use`, etc.)
-3. **Ingests** attached files into the backend
+3. **Ingests** attached files into the RAG core
 4. **Enforces** the cybersecurity-only guardrail (rejects off-topic queries)
 5. **Detects** report generation intent ("generate a docx report")
-6. **Calls** the backend for chat or report generation
-7. **Post-processes** table responses for better formatting
+6. **Condenses** follow-up questions before retrieval
+7. **Calls** the core for chat or report generation
 
 ```python
-def pipe(self, body, __user__, __files__, **kwargs):
-    user_text = extract_text(latest_message)
-    
-    # Priority order:
-    # 1. Engagement commands (always allowed)
-    # 2. Must have active engagement
-    # 3. Ingest any attached files
-    # 4. Cybersecurity topic guardrail
-    # 5. Report generation detection
-    # 6. Normal RAG chat
+# Priority order in orchestration:
+# 1. Engagement commands (always allowed)
+# 2. Must have active engagement
+# 3. Ingest any attached files
+# 4. Cybersecurity topic guardrail
+# 5. Report generation detection
+# 6. Query condensation
+# 7. Normal RAG chat
 ```
 
 ### 4.3 Engagement Management
 
-**Files:** `backend/app/store.py`, `backend/app/routers/engagements.py`
+**Files:** `core/store.py`, `core/routers/engagements.py`
 
 Engagements provide persistent scoping — documents and context survive across chat sessions:
 
@@ -507,8 +506,7 @@ See `01-lab-exercises.md` for detailed step-by-step instructions.
 The built-in framework corpus is paraphrased. For client-facing reports citing exact standard language:
 
 ```bash
-docker exec -it fortis-backend \
-  python -m app.frameworks.loader NIST_CSF /path/to/NIST.CSWP.29.pdf
+python -m core.frameworks.loader NIST_CSF /path/to/NIST.CSWP.29.pdf
 ```
 
 This replaces the paraphrased seed with verbatim text. Works for any framework name — custom standards are picked up automatically.
@@ -516,14 +514,13 @@ This replaces the paraphrased seed with verbatim text. Works for any framework n
 ### 6.2 Testing Without a GPU
 
 ```bash
-cd backend
 pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
 The test suite uses:
 - `EMBEDDING_BACKEND=hash-stub` — deterministic pseudo-embeddings (no HuggingFace download)
-- Monkeypatched LLM — returns canned responses (no Ollama needed)
+- Monkeypatched LLM — returns canned responses (no model needed)
 - Temporary directories for Chroma and SQLite
 
 This validates the wiring (routing, schema, map-reduce triggering) without model quality.
@@ -563,6 +560,5 @@ The persona is explicitly instructed to say so if asked to do live/binary analys
 - **OWASP Top 10:2025:** https://owasp.org/Top10/2025/
 - **CIS Controls v8.1:** https://www.cisecurity.org/controls
 - **MITRE ATT&CK:** https://attack.mitre.org/
-- **Ollama:** https://ollama.com/
+- **llama.cpp:** https://github.com/ggml-org/llama.cpp
 - **ChromaDB:** https://www.trychroma.com/
-- **Open WebUI:** https://github.com/open-webui/open-webui

@@ -1,415 +1,161 @@
-# Lab Exercises: Building Your AI Cybersecurity Advisor
+# Lab Exercises: Working with Fortis Desktop
 
-These hands-on labs walk you through the system end-to-end. Each lab builds on the previous one.
+Five hands-on labs for the Fortis desktop app — a fully local AI cybersecurity advisor. Everything runs on your machine: no cloud, no accounts, no code. You launch the app, create engagements, attach documents, chat, and generate consultant reports.
 
-**Prerequisites:** Docker Compose stack running (`docker compose up -d --build`), model pulled (`ollama pull qwen2.5:3b`), Open WebUI accessible at `http://localhost:3000`.
+**Total lab time:** ~55–60 minutes. Labs 1–5 are sequential; Labs 2, 3 and 5 reuse engagements from earlier labs; Lab 4 creates a new one.
 
----
+**Prerequisites:** Completed setup per `05-setup-guide.md` — running `setup.ps1` once checks Python, creates a virtual environment, installs dependencies and the llama.cpp engine, runs the offline self-tests, and opens Fortis. All lab files are in `training\sample-lab-docs\` inside the Fortis folder.
 
-## Lab 1: Upload and Analyze a Firewall Configuration
+**Syllabus:** Labs 1–5 map to the modules in `03-syllabus.md`.
 
-**Time:** 15 minutes
-**Goal:** Understand the full ingestion → retrieval → chat flow
-
-### Step 1: Create an Engagement
-
-In the Open WebUI chat, type:
-
-```
-/new-engagement Workshop Lab :: Firewall Config Review
-```
-
-You should see: "Created and activated engagement **Workshop Lab — Firewall Config Review**."
-
-### Step 2: Upload the Sample Config
-
-Use the file attachment button in Open WebUI to upload `sample-lab-docs/firewall-config.txt`. The pipeline will automatically ingest it.
-
-You should see:
-```
-Document ingestion:
-- firewall-config.txt: indexed 2 chunks
-```
-
-### Step 3: Ask Questions
-
-Try these queries and observe how Fortis responds:
-
-```
-What are the security issues in this firewall configuration?
-```
-
-```
-Which NIST CSF controls are relevant to the findings?
-```
-
-```
-What would you recommend to improve this configuration?
-```
-
-### Step 4: Verify Grounding
-
-Ask Fortis to cite its sources:
-```
-For each finding, tell me which file and section it came from.
-```
-
-**What to look for:**
-- Findings reference the actual uploaded file (not hallucinated sources)
-- Framework mappings are reasonable (not forced)
-- Severity ratings have justification
-- Remediation is specific to your config, not generic
-
-### Step 5: Check Engagement State
-
-```
-/whoami
-```
-
-Note the files listed — they persist. Close the browser tab, open a new one, and type:
-
-```
-/use workshop-lab-firewall-config-review
-what did we find last time?
-```
-
-The context persists across sessions.
+All work is scoped to an engagement and stored locally under `%APPDATA%\Fortis` (`models\`, `chroma\`, `uploads\`, `reports\`, `engagements.sqlite3`), so closing the app never loses work.
 
 ---
 
-## Lab 2: Generate a Security Report
+## Lab 1: Verify setup & first chat (~10 min)
 
-**Time:** 15 minutes
-**Goal:** Exercise the analysis engine and report generation
+**Objective:** Launch the desktop app, complete the one-time model download, create an engagement, and confirm a framework-grounded reply.
 
-### Step 1: Request a Report (DOCX)
+**Duration:** ~10 minutes
 
-Still in the same engagement from Lab 1, type:
+### Steps
 
-```
-generate a docx report
-```
+1. Run `setup.ps1` in the Fortis folder. When the offline self-tests pass, the Fortis window opens — dark sidebar on the left, chat area on the right.
+2. Click **⚙ Model** (top right). The app detected your hardware and marks a suggested tier. Confirm **Qwen3.5 4B (recommended default)** is listed.
+3. Click the 4B tier. The model downloads once (~3.4 GB, resumable) and the dialog reports **Download complete — model loads on next message.** Close the dialog.
+4. Click **+ New engagement** (sidebar). In the dialog enter:
+   - Client name: `Workshop`
+   - Engagement name: `Lab 1 — first chat`
+   - Notes: leave blank (optional)
 
-You should see a response like:
-```
-Security report generated for Workshop Lab — Firewall Config Review (DOCX)
+   Click **Create**. The status line confirms the engagement was created and activated, and the top bar shows its name.
+5. Click in the chat box, type `What are the OWASP Top 10 risks I should check first in a new web application?` and press Enter.
+6. The first message loads the model (10–60 s) before the reply streams. The status dot turns green once the model is ready.
 
-- Findings: [N]
-- Overall risk rating: [High/Medium/etc]
-- [Download the report]
-```
+### Expected result
 
-### Step 2: Download and Review
+A consultant-style answer grounded in named frameworks rather than generic chat output. Fortis ships 12 framework seeds — NIST CSF, OWASP Top 10, CIS Controls, plus MITRE ATT&CK, CWE Top 25, NIST 800-53, ISO 27001, SOC 2, PCI DSS, GDPR, HIPAA, and CIS Benchmarks.
 
-Click the download link or navigate to:
-```
-http://localhost:8010/report/download/[filename].docx
-```
+### Try also
 
-Open the DOCX file. Check for:
-- Title page with engagement name and date
-- Client Context section
-- Scope section
-- Executive Summary with overall risk rating
-- Findings section with severity colors, evidence, framework mappings
-- Recommendations summary
-
-### Step 3: Try Other Formats
-
-```
-generate a pptx presentation
-```
-
-```
-generate a pdf report
-```
-
-Compare the three formats — same data, different presentation.
-
-### Step 4: Add Focus Instructions
-
-```
-generate a docx report focusing on access control issues only
-```
-
-The `focus_instructions` parameter narrows the LLM's analysis.
+Send `Compare NIST CSF 2.0 functions with CIS Controls v8.1 in a table.` — one of the starter suggestions on the empty chat screen — and note the structured comparison.
 
 ---
 
-## Lab 3: Explore the API Directly
+## Lab 2: Document analysis (~15 min)
 
-**Time:** 10 minutes
-**Goal:** Understand the backend API
+**Objective:** Attach two sample documents to an engagement, review the security findings, and drill into the highest-risk one.
 
-### Step 1: Open API Docs
+**Duration:** ~15 minutes
 
-Navigate to `http://localhost:8010/docs` — this is the auto-generated FastAPI Swagger UI.
+**Files used:** `training\sample-lab-docs\firewall-config.txt` (a misconfigured Cisco IOS-style perimeter firewall) and `training\sample-lab-docs\iam-policy.json` (an over-permissive AWS IAM policy).
 
-### Step 2: List Engagements
+### Steps
 
-Find the `GET /engagements` endpoint and click "Try it out". You should see the engagement you created.
+1. Reuse the Lab 1 engagement, or click **+ New engagement** and create `Lab 2 — document review`.
+2. Click **📎** (Attach file for review) at the left of the chat box, browse to `training\sample-lab-docs\`, and select `firewall-config.txt`. The status line shows the ingest progress, then the chat confirms `<file> ingested: N chunks indexed`.
+3. Attach `iam-policy.json` the same way.
+4. Ask: `What are the security issues across the documents I uploaded?`
+5. Read the findings. Expect the firewall analysis to surface items such as the `permit ip any any` ACL applied inbound on the WAN interface, default management credentials, Telnet and plain-HTTP management enabled, a DES/MD5 VPN with a plaintext pre-shared key, and the SNMP community `public`. Expect the IAM analysis to surface `"Principal": "*"` with `"Action": "*"` on all resources, a statement that denies users the ability to set up MFA, and permissions to stop or delete CloudTrail logging.
+6. Ask: `Which finding is highest risk and why?`
+7. Ground the answer: `For each finding, tell me which file and section it came from.`
 
-### Step 3: Upload via API
+### Expected result
 
-```bash
-curl -X POST http://localhost:8010/upload \
-  -F "file=@sample-lab-docs/iam-policy.json" \
-  -F "engagement_id=workshop-lab-firewall-config-review"
-```
+Findings reference the actual uploaded files (not invented sources), each with a severity and a justification. The highest-risk callouts are typically the wide-open WAN ACL and the `"Action": "*"` IAM policy, followed by the MFA-denial and audit-logging statements.
 
-### Step 4: Chat via API
+### Try also
 
-```bash
-curl -X POST http://localhost:8010/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "engagement_id": "workshop-lab-firewall-config-review",
-    "message": "What are the top 3 risks in the uploaded documents?"
-  }'
-```
-
-### Step 5: Generate Report via API
-
-```bash
-curl -X POST http://localhost:8010/report/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "engagement_id": "workshop-lab-firewall-config-review",
-    "format": "pdf",
-    "focus_instructions": "Focus on credential management"
-  }'
-```
+Ask `What remediation order would you recommend for the top three findings, and which NIST CSF functions do they map to?`
 
 ---
 
-## Lab 4: Large Document — Map-Reduce in Action
+## Lab 3: Generate a consultant report (~10 min)
 
-**Time:** 10 minutes
-**Goal:** Trigger and understand the map-reduce analysis path
+**Objective:** Turn the Lab 2 engagement into consultant deliverables in three formats and locate the downloads.
 
-### Step 1: Create a New Engagement
+**Duration:** ~10 minutes
 
-```
-/new-engagement Workshop Lab :: Large Document Test
-```
+### Steps
 
-### Step 2: Upload the Large Sample
+1. Open the Lab 2 engagement (click it in the sidebar).
+2. In the chat box type: `generate a docx report`. The reply summarizes the run — **Security report generated** for the engagement (DOCX), the findings count, the overall risk rating — with a **Download the report** link.
+3. Click the download link and open the DOCX. Check the title page (engagement name and date), client context, scope, executive summary with the overall risk rating, findings with severity, evidence and framework mappings, and recommendations.
+4. Type `generate a pptx presentation`, then `generate a pdf report`. Download both the same way.
+5. Click **Open reports folder** (sidebar). File Explorer opens at `%APPDATA%\Fortis\reports` — all three files are there.
 
-Upload `sample-lab-docs/large-policy-document.txt`. This document is intentionally large enough to exceed the `HIERARCHICAL_THRESHOLD_TOKENS` (5000 tokens in production, 200 in tests).
+### Expected result
 
-### Step 3: Generate a Report
+Three reports generated from the same engagement — identical findings, three presentations (document, slide deck, PDF). Reports persist in the reports folder even if a browser blocks a download link.
 
-```
-generate a docx report for this large document
-```
+### Try also
 
-**What to observe in the backend logs:**
-```bash
-docker logs fortis-backend 2>&1 | tail -20
-```
-
-You should see log lines indicating:
-```
-Engagement ...: N tokens > threshold, using map-reduce analysis pipeline
-```
-
-This means the system automatically:
-1. Split the document into token-bounded batches
-2. Analyzed each batch independently (map)
-3. Combined and deduplicated findings (reduce)
-
-### Step 4: Compare
-
-Upload a small file to a separate engagement and generate a report. Check the logs — you should see the flat path:
-```
-Engagement ...: N tokens <= threshold, using flat analysis pass
-```
+Type `generate a docx report focusing on access control issues only` and compare it against the full report — focus instructions narrow the analysis.
 
 ---
 
-## Lab 5: Extending the System — Custom Framework
+## Lab 4: Persona modes (~10 min)
 
-**Time:** 15 minutes
-**Goal:** Add your own security framework to the reference corpus
+**Objective:** Compare how the same document is analyzed under different analyst personas.
 
-### Understanding Framework Storage
+**Duration:** ~10 minutes
 
-Framework data lives in two places:
-1. **Built-in JSON files** (`backend/app/frameworks/*.json`) — loaded at startup
-2. **ChromaDB** (`security_frameworks` collection) — where retrieval happens
+**File used:** `training\sample-lab-docs\large-policy-document.txt` — a 12-section enterprise security policy (acceptable use, access control, authentication, data handling, network, endpoint, application security, incident response, vulnerability management, cloud, physical, training) with appendices mapping to NIST CSF 2.0, ISO 27001, CIS Controls, OWASP Top 10, and SOC 2.
 
-### Step 1: Create a Custom Framework JSON
+### Steps
 
-Create a file called `custom_framework.json` in `backend/app/frameworks/`:
+1. Click **+ New engagement** and create `Lab 4 — personas`.
+2. Attach `training\sample-lab-docs\large-policy-document.txt`.
+3. Leave the **Analyst mode** dropdown (left of the chat box) on **General**. Ask: `What are the biggest security gaps in this policy?` Note the consultant-memo style: material findings first, clear explanations.
+4. Switch the dropdown to **GRC**. Ask the same question again (the persona applies from your next message).
+5. Compare the two replies. In GRC mode Fortis maps each point to a named control with framework and control ID (for example `NIST CSF PR.PS`), frames issues as policy or control gaps in audit-evidence phrasing, and distinguishes gaps from findings from observations.
+6. Optional: attach `training\sample-lab-docs\vulnerable-app.py` (a deliberately vulnerable Flask user-management API), switch the dropdown to **Code**, and ask `What vulnerabilities are in this application?` Expect vulnerability classes named by CWE, references to specific functions and lines, data-flow descriptions from source to sink, and minimal fix sketches.
 
-```json
-[
-  {
-    "id": "CUSTOM-1",
-    "title": "Data Classification",
-    "text": "All data must be classified according to sensitivity levels: Public, Internal, Confidential, Restricted. Classification labels must be applied to all documents and data stores.",
-    "version": "Internal Policy v1.0",
-    "source_url": null
-  },
-  {
-    "id": "CUSTOM-2",
-    "title": "Password Policy",
-    "text": "Minimum 14 characters, must include uppercase, lowercase, numbers, and special characters. Passwords must be rotated every 90 days. No password reuse across 12 generations.",
-    "version": "Internal Policy v1.0",
-    "source_url": null
-  },
-  {
-    "id": "CUSTOM-3",
-    "title": "Multi-Factor Authentication",
-    "text": "MFA is required for all remote access, administrative accounts, and access to Confidential or Restricted data. Acceptable MFA methods: hardware tokens, TOTP apps. SMS-based MFA is prohibited.",
-    "version": "Internal Policy v1.0",
-    "source_url": null
-  }
-]
-```
+### Expected result
 
-### Step 2: Register the Framework
+Same document, three professional framings: a consultant memo (General), an audit workpaper with control references (GRC), and a code review (Code). Severity framing shifts with the persona — GRC speaks in control gaps, Code in vulnerability classes.
 
-Edit `backend/app/frameworks/__init__.py` and add your framework:
+### Try also
 
-```python
-_FILES = {
-    "NIST_CSF": "nist_csf.json",
-    "OWASP_TOP10": "owasp_top10.json",
-    "CIS_CONTROLS": "cis_controls.json",
-    "MITRE_ATTACK": "mitre_attack.json",
-    "CIS_BENCHMARKS": "cis_benchmarks.json",
-    "CUSTOM_POLICY": "custom_framework.json",  # Add this line
-}
-```
-
-### Step 3: Rebuild and Test
-
-```bash
-docker compose build backend
-docker compose up -d backend
-```
-
-Verify it loaded:
-```bash
-curl http://localhost:8010/health
-# Should show "CUSTOM_POLICY" in frameworks_loaded
-```
-
-### Step 4: Test Retrieval
-
-Upload a document that violates your custom policy and ask:
-```
-Does this document comply with our internal password policy?
-```
-
-Fortis should now retrieve and reference your custom framework controls.
-
-### Step 5: Load a Real PDF (Optional)
-
-If you have an official NIST CSF PDF:
-
-```bash
-docker exec -it fortis-backend \
-  python -m app.frameworks.loader NIST_CSF /path/to/NIST.CSWP.29.pdf
-```
-
-This replaces the paraphrased seed with verbatim text from the official document.
+Switch to **OSINT / CTI** on the same policy and ask how the incident-response section would be exercised — answers shift to structured analyst formats.
 
 ---
 
-## Lab 6: Testing the System
+## Lab 5: Structured output & diagrams (~10 min)
 
-**Time:** 10 minutes
-**Goal:** Run the offline test suite and understand what it validates
+**Objective:** Get structured summaries and a rendered architecture or attack-path diagram directly in the chat.
 
-### Step 1: Run Tests (No GPU Required)
+**Duration:** ~10 minutes
 
-```bash
-cd backend
-pip install -r requirements-dev.txt --break-system-packages
-pytest tests/ -v
-```
+### Steps
 
-### Step 2: Understand the Test Architecture
+1. Return to the Lab 2 engagement (firewall and IAM documents attached).
+2. Ask: `Give me a structured summary of the findings as a table.` The chat renders a formatted table (severity, finding, source) instead of prose.
+3. Ask: `Draw a network architecture diagram based on the firewall configuration.` Fortis replies with a rendered flowchart inside the chat — internet-facing zones, the perimeter, and internal segments.
+4. Ask: `Show the attack path an outside attacker would take against this firewall as a diagram.` Compare the two diagrams.
+5. Follow up: `Where should network segmentation break this attack path?` — note that the discussion stays anchored to the rendered chart.
 
-Read `tests/conftest.py` — it sets environment variables before any imports:
+### Expected result
 
-```python
-os.environ["EMBEDDING_BACKEND"] = "hash-stub"       # No model download
-os.environ["HIERARCHICAL_THRESHOLD_TOKENS"] = "200"  # Low threshold
-os.environ["MAP_BATCH_TOKENS"] = "80"                # Small batches
-os.environ["OLLAMA_BASE_URL"] = "http://127.0.0.1:1" # Deliberately unreachable
-```
+Tables render as real tables and diagrams render as charts in the chat. If a diagram cannot be rendered, the raw source appears with a notice — ask Fortis to redraw it.
 
-Read `tests/test_integration.py` — the LLM is monkeypatched:
+### Try also
 
-```python
-async def fake_chat(messages, temperature=0.2, json_mode=False):
-    system_content = messages[0]["content"]
-    if "ONE batch of excerpts" in system_content:
-        return json.dumps(FAKE_MAP_RESULT)   # Map phase response
-    if "already reviewed" in system_content:
-        return json.dumps(FAKE_REPORT)        # Reduce phase response
-    if json_mode:
-        return json.dumps(FAKE_REPORT)        # Flat path response
-    return "This is a stub conversational reply from Fortis."
-```
-
-### Step 3: What the Tests Validate
-
-| Test | What it checks |
-|------|----------------|
-| `test_health` | Frameworks loaded correctly |
-| `test_create_engagement_has_readable_slug` | ID generation (human-readable slugs) |
-| `test_create_engagement_idempotent` | Duplicate creation returns same ID |
-| `test_active_engagement_persists_per_user` | Per-user engagement scoping |
-| `test_upload_and_list_files` | File ingestion and listing |
-| `test_chat_returns_stub_reply` | Chat routing works |
-| `test_report_generation_flat_path` | Small doc → flat analysis → valid DOCX/PPTX/PDF |
-| `test_report_generation_triggers_map_reduce` | Large doc → map-reduce triggered |
-
-### Step 4: What It Does NOT Validate
-
-- Model output quality (needs real GPU + Ollama)
-- Embedding retrieval quality (hash-stub is not semantically meaningful)
-- UI integration (Open WebUI pipeline)
-
-For quality validation, you need the live stack. This test suite validates the wiring.
-
----
-
-## Lab 7: Customization Challenge
-
-**Time:** 15 minutes (open-ended)
-**Goal:** Modify the system and observe the effects
-
-### Challenge 1: Change the Persona
-
-Edit `backend/app/rag.py` and modify the `SYSTEM_PERSONA`. Change the name, the expertise description, or the scope restrictions. Rebuild the backend and observe how it changes responses.
-
-### Challenge 2: Adjust Severity Criteria
-
-Edit the `FLAT_SYSTEM_PROMPT` in `backend/app/analysis.py`. Change the severity rating criteria — for example, add a requirement that "any finding involving credentials must be rated Critical". Rebuild and test with the sample firewall config.
-
-### Challenge 3: Add a New File Format
-
-Edit `backend/app/ingestion.py`. Add support for `.log` files with timestamp parsing, or `.xml` files with element extraction. Test by uploading a sample file of that type.
-
-### Challenge 4: Modify the Topic Guardrail
-
-Edit `openwebui_pipeline/fortis_pipe.py`. Add a keyword pattern that currently blocks a query you think should be allowed, or remove one that's too permissive. Test the boundary.
+In the Lab 4 engagement ask for `a sequence diagram of the incident response flow from the policy's incident response section` — flowcharts and sequence diagrams are both supported.
 
 ---
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| "Model not pulled yet" | `docker exec -it fortis-ollama ollama pull qwen2.5:3b` |
-| "Could not reach the backend" | Check `docker compose ps` — all containers should be "Up" |
-| "No active engagement" | Create one first: `/new-engagement Client :: Name` |
-| Upload returns 413 | File exceeds 40MB limit — split it |
-| Report generation is slow | First run downloads embedding model weights — subsequent runs are fast |
-| GPU not detected | Verify NVIDIA drivers + `nvidia-smi` works outside Docker |
-| Chroma errors after restart | Data persists in Docker volumes — don't use `docker compose down -v` |
+| Symptom | Cause | Fix |
+|---|---|---|
+| App won't open | `python` is missing from PATH, or the setup script was blocked by execution policy | Reinstall Python ticking **Add to PATH**, then run `powershell -ExecutionPolicy Bypass -File setup.ps1` |
+| Model download stalls | Interrupted Wi-Fi, VPN, or proxy during the one-time download | Click the tier again — downloads are resumable and pick up where they stopped; the instructor can also pre-download the tier for the room |
+| Replies are very slow | The model loads on first use, and the 4B tier is heavy on CPU-only machines | Wait for the first reply (10–60 s), or open **⚙ Model** and switch to the 0.8B or 2B tier |
+| No findings for a file type | The format was not recognized, or it ingested zero chunks | Check for the `ingested: N chunks indexed` confirmation — supported types include PDF, DOCX, PPTX, XLSX, CSV, configs, and code; if N is 0, convert the file or paste its content into the chat |
+| Report button does nothing | No model loaded, or the engagement has no attached documents yet | Confirm the status dot is green (open **⚙ Model** if not) and attach files first; reports always land in `%APPDATA%\Fortis\reports` — use **Open reports folder** |
+| Browser opened instead of the native app window | The WebView2 runtime was unavailable, so the interface fell back to the default browser | These labs work identically in the browser view; to restore the native window, update Microsoft Edge or install the WebView2 Runtime and relaunch `setup.ps1` |
+
+---
+
+For builder-level labs (API, custom frameworks, offline tests, Docker stack), see `00-workshop-guide.md`.

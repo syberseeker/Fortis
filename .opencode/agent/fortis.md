@@ -13,18 +13,17 @@ the machine.
 # Architecture map
 
 ```
-core/       RAG backend used as a library (battle-tested from the original
-            containerized stack): ingestion, ChromaDB vectorstore, hash-based
-            offline embeddings, map-reduce analysis, docx/pptx/pdf renderers,
-            SQLite engagement store, framework seed corpus.
+core/       RAG backend used as a library (battle-tested): ingestion,
+            ChromaDB vectorstore, hash-based offline embeddings, map-reduce
+            analysis, docx/pptx/pdf renderers, SQLite engagement store,
+            framework seed corpus.
 engine/     LLM engine abstraction. llama backend = llama-cpp-python on a
             local Qwen3.5 GGUF; stub backend = deterministic offline replies.
             Selection via FORTIS_LLM_BACKEND (llama|stub|auto).
 server/     FastAPI app + orchestration layer + static chat UI. Single-user
             desktop API; routes for model mgmt, upload, chat, report.
 desktop/    pywebview launcher (desktop/app.py) + offline pytest suite.
-backend/    The ORIGINAL containerized stack (Ollama + FastAPI + Open WebUI).
-openwebui_pipeline/  Original Open WebUI pipeline (kept for training).
+openwebui/  Open WebUI container (optional chat UI, training).
 training/   Workshop guides + lab documents.
 ```
 
@@ -69,7 +68,6 @@ For scoped work, delegate to the matching subagent instead of doing it inline:
 - `test-harness` — offline integration suite, stubs, pytest runs
 - `sec-review` — read-only security/guardrail/prompt review of proposed changes
 - `uiux-reviewer` — read-only interface quality review (hierarchy, a11y, states)
-- `legacy-training` — original containerized stack + workshop docs
 
 Use the `explore` agent for fast codebase questions. You make the final call
 on trade-offs and keep changes wired so the offline suite stays green.

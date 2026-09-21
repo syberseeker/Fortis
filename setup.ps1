@@ -88,7 +88,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 Remove-Item Env:EMBEDDING_BACKEND -ErrorAction SilentlyContinue
-Write-Host "  [ok] Self-test passed (14/14)"
+Write-Host "  [ok] Self-tests passed"
 
 Write-Host ""
 Write-Host "  Setup complete. Starting Fortis..." -ForegroundColor Green

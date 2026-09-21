@@ -68,9 +68,8 @@ Retrieval quality is tiered via `RAG_LEVEL` (see `.env.example`):
 └──────────────────────────────────────────────┘
 ```
 
-- `core/` is the battle-tested RAG backend from the original containerized
-  stack, reused as a library (same API, same report schema, same offline
-  test suite — `python -m pytest desktop/tests/`).
+- `core/` is the battle-tested RAG backend, reused as a library (same API,
+  same report schema, same offline test suite - run with 'python -m pytest desktop/tests/'.
 - `engine/` replaces Ollama with in-process llama.cpp; models are Qwen3.5
   Q4_K_M GGUFs pulled from Hugging Face with resume support.
 - `server/` adds the UI-facing API (model picker, slash commands) and the
@@ -89,12 +88,6 @@ Everything survives restarts.
 ```bash
 python -m server.app --port 8757     # same UI at http://127.0.0.1:8757
 ```
-
-## The original containerized stack
-
-Kept for the "how would you build this as a service" training module:
-`docker-compose.yml` (Ollama + FastAPI backend + Open WebUI + pipelines) —
-see `README.orig.md` notes and `training/00-workshop-guide.md`.
 
 ## What this is / isn't
 
@@ -117,7 +110,5 @@ fortis/
 ├── desktop/app.py             # pywebview launcher
 ├── desktop/tests/             # offline integration suite (no GPU/network)
 ├── training/                  # workshop guides + lab docs
-├── backend/                   # original containerized stack (kept)
-├── openwebui_pipeline/        # original Open WebUI pipeline (kept)
-└── docker-compose.yml         # original 4-container stack (kept)
+└── openwebui/                 # Open WebUI container (optional chat UI)
 ```

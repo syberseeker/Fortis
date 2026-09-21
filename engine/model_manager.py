@@ -97,7 +97,7 @@ TIERS: Dict[str, dict] = {
         "min_vram_gb": 5.5,
         "n_ctx": 12288,
         "roles": ["chat", "grc", "cti"],
-        "label": "Llama 3.1 8B Q3 (RTX 4050-class, 16k context)",
+        "label": "Llama 3.1 8B Q3 (RTX 4050-class, 12k context)",
         "match": ["llama-3.1-8b"],
     },
     "7b-coder": {
