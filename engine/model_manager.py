@@ -7,10 +7,10 @@ small enough to fetch individually, with HTTP resume support via huggingface_hub
     0.8b      -> unsloth/Qwen3.5-0.8B-GGUF              (~1.0 GB)
     2b        -> unsloth/Qwen3.5-2B-GGUF                (~2.7 GB)
     4b        -> unsloth/Qwen3.5-4B-GGUF                (~3.4 GB)   default tier
-    3b-llama  -> unsloth/Llama-3.2-3B-GGUF              (~1.9 GB)
+    3b-llama  -> bartowski/Llama-3.2-3B-Instruct-GGUF     (~2.0 GB)
     1.5b-coder-> unsloth/Qwen2.5-Coder-1.5B-Instruct-GGUF (~1.0 GB)
     3b-coder  -> unsloth/Qwen2.5-Coder-3B-Instruct-GGUF (~1.9 GB)
-    8b-llama  -> unsloth/Llama-3.1-8B-GGUF              (~3.9 GB)
+    8b-llama  -> unsloth/Llama-3.1-8B-Instruct-GGUF      (~3.9 GB)
     7b-coder  -> unsloth/Qwen2.5-Coder-7B-Instruct-GGUF (~3.7 GB)
     7b-r1     -> unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF (~3.6 GB)
 
@@ -61,7 +61,7 @@ TIERS: Dict[str, dict] = {
         "match": ["-4b", "_4b"],
     },
     "3b-llama": {
-        "repo": "unsloth/Llama-3.2-3B-GGUF",
+        "repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
         "quant": "q4_k_m",
         "size_gb": 1.9,
         "min_vram_gb": 2.0,
@@ -91,7 +91,7 @@ TIERS: Dict[str, dict] = {
         "match": ["coder-3b"],
     },
     "8b-llama": {
-        "repo": "unsloth/Llama-3.1-8B-GGUF",
+        "repo": "unsloth/Llama-3.1-8B-Instruct-GGUF",
         "quant": "q3_k_m",
         "size_gb": 3.9,
         "min_vram_gb": 5.5,
