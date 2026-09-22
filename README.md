@@ -9,7 +9,7 @@ A fully local cybersecurity advisory **desktop app**. Upload any document
 analysis grounded in NIST CSF / OWASP Top 10 / CIS Controls, downloadable as
 DOCX, PPTX, or PDF.
 
-No Docker. No cloud APIs. One script, one window — all data stays on the
+No Docker. No cloud APIs. One script, one window. All data stays on the
 machine (`%APPDATA%\Fortis` on Windows, `~/.local/share/Fortis` elsewhere).
 
 ## Quick start
