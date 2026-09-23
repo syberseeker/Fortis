@@ -9,4 +9,5 @@ training.zip
 .pytest_cache/
 fortis-out.log
 fortis-err.log
+.opencode/
 .openchamber/
