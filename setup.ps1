@@ -53,7 +53,8 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  [ok] Dependencies present"
 }
 
-# 4. llama-cpp-python: CUDA wheel if GPU + marker missing, else CPU wheel
+# 4. llama-cpp-python: prebuilt CUDA wheel if GPU, else prebuilt CPU wheel
+#    (never builds from source - that needs MSVC/CMake which we can't assume)
 $marker = Join-Path $PSScriptRoot ".llama-cuda-ok"
 $haveLlama = Invoke-Native { & $venvPy -c "import llama_cpp" 2>$null }
 if ($LASTEXITCODE -ne 0) {
@@ -64,21 +65,54 @@ if ($LASTEXITCODE -ne 0) {
     } catch {}
 
     Write-Host "  [..] Installing the local AI engine (llama.cpp, ~200 MB)..."
+    $ok = $false
     if ($hasNvidia) {
-        Write-Host "       NVIDIA GPU detected - trying the CUDA build first..."
-        & $venvPy -m pip install --disable-pip-version-check --quiet llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
-        if ($LASTEXITCODE -eq 0 -and (Invoke-Native { & $venvPy -c "import llama_cpp" 2>$null }) -or $LASTEXITCODE -eq 0) {
+        Write-Host "       NVIDIA GPU detected - trying the CUDA wheel first..."
+        & $venvPy -m pip install --disable-pip-version-check --quiet --only-binary :all: llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+        if ($LASTEXITCODE -eq 0) { Invoke-Native { & $venvPy -c "import llama_cpp" 2>$null }; if ($LASTEXITCODE -eq 0) { $ok = $true } }
+        if ($ok) {
             New-Item -ItemType File -Path $marker -Force | Out-Null
             Write-Host "  [ok] Engine installed (GPU-accelerated)"
         } else {
-            Write-Host "       CUDA build unavailable - falling back to CPU (slower but works)"
-            & $venvPy -m pip install --disable-pip-version-check --quiet --force-reinstall llama-cpp-python
-            Write-Host "  [ok] Engine installed (CPU)"
+            Write-Host "       CUDA wheel unavailable - trying the CPU wheel (slower but works)"
         }
-    } else {
-        & $venvPy -m pip install --disable-pip-version-check --quiet llama-cpp-python
-        if ($LASTEXITCODE -ne 0) { Write-Host "  [X] Engine install failed" -ForegroundColor Red; Read-Host "  Press Enter to exit"; exit 1 }
-        Write-Host "  [ok] Engine installed (CPU)"
+    }
+    if (-not $ok) {
+        & $venvPy -m pip install --disable-pip-version-check --quiet --only-binary :all: llama-cpp-python
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "       CPU wheel not on PyPI for this Python - trying the llama.cpp CPU index..."
+            & $venvPy -m pip install --disable-pip-version-check --quiet --only-binary :all: llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+        }
+        if ($LASTEXITCODE -eq 0) { Invoke-Native { & $venvPy -c "import llama_cpp" 2>$null }; if ($LASTEXITCODE -eq 0) { $ok = $true } }
+        if ($ok) {
+            Write-Host "  [ok] Engine installed (CPU)"
+        } else {
+            $hasMsvc = $false
+            try {
+                $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+                if (Test-Path $vswhere) {
+                    $vs = Invoke-Native { & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null }
+                    if ($vs) { $hasMsvc = $true }
+                }
+                if (-not $hasMsvc -and (Get-Command cl.exe -ErrorAction SilentlyContinue)) { $hasMsvc = $true }
+            } catch {}
+            if ($hasMsvc) {
+                Write-Host "       No prebuilt wheel - compiling from source with the detected MSVC toolchain (needs CMake+nmake)..."
+                & $venvPy -m pip install --disable-pip-version-check --quiet llama-cpp-python
+                if ($LASTEXITCODE -eq 0) { Invoke-Native { & $venvPy -c "import llama_cpp" 2>$null }; if ($LASTEXITCODE -eq 0) { $ok = $true } }
+            }
+            if ($ok) {
+                Write-Host "  [ok] Engine installed (CPU, built from source)"
+            } else {
+                Write-Host "  [X] No prebuilt llama-cpp-python wheel for $(& $py --version) on this system." -ForegroundColor Red
+                Write-Host "      Options:" -ForegroundColor Yellow
+                Write-Host "        1. Install Python 3.13 (has prebuilt wheels) and rerun setup." -ForegroundColor Yellow
+                Write-Host "        2. Install Visual Studio Build Tools (Desktop development with C++) and rerun." -ForegroundColor Yellow
+                Write-Host "        3. Use the community Windows wheel collection (cp314) from: llama-cpp-wheels on Hugging Face." -ForegroundColor Yellow
+                Read-Host "  Press Enter to exit"
+                exit 1
+            }
+        }
     }
 } else {
     Write-Host "  [ok] AI engine present"
