@@ -43,10 +43,10 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 $venvPy = ".\.venv\Scripts\python.exe"
 
 # 3. dependencies (skipped when already present)
-$probe = Invoke-Native { & $venvPy -c "import fastapi, chromadb, fitz, docx, pptx, openpyxl, reportlab, huggingface_hub, uvicorn, multipart" 2>$null }
+$probe = Invoke-Native { & $venvPy -c "import fastapi, chromadb, fitz, docx, pptx, openpyxl, reportlab, huggingface_hub, uvicorn, multipart, rank_bm25, matplotlib, webview, pytest" 2>$null }
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  [..] Installing dependencies (first run only, ~5 min)..."
-    & $venvPy -m pip install --disable-pip-version-check --quiet fastapi "uvicorn[standard]" python-multipart pydantic chromadb sentence-transformers pymupdf python-docx python-pptx openpyxl reportlab markdown-it-py "huggingface_hub>=0.26" pywebview
+    & $venvPy -m pip install --disable-pip-version-check -r requirements-dev.txt
     if ($LASTEXITCODE -ne 0) { Write-Host "  [X] Dependency install failed - check internet connection" -ForegroundColor Red; Read-Host "  Press Enter to exit"; exit 1 }
     Write-Host "  [ok] Dependencies installed"
 } else {
@@ -122,7 +122,7 @@ if ($LASTEXITCODE -ne 0) {
 # 5. offline self-test (fast, no model download)
 Write-Host "  [..] Running offline sanity tests..."
 $env:EMBEDDING_BACKEND = "hash-stub"
-Invoke-Native { & $venvPy -m pytest desktop\tests\ -q --no-header 2>&1 } | Out-Null
+Invoke-Native { & $venvPy -m pytest desktop\tests\ -q --no-header 2>&1 } | Select-Object -Last 15
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  [X] Self-test failed - see output above" -ForegroundColor Red
     Read-Host "  Press Enter to exit"

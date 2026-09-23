@@ -32,12 +32,12 @@ echo "  [ok] Virtual environment ready"
 VPY=".venv/bin/python"
 
 # 3. dependencies
-if ! "$VPY" -c "import fastapi, chromadb, fitz, docx, pptx, openpyxl, reportlab, huggingface_hub, uvicorn, multipart" >/dev/null 2>&1; then
+if ! "$VPY" -c "import fastapi, chromadb, fitz, docx, pptx, openpyxl, reportlab, huggingface_hub, uvicorn, multipart, rank_bm25, matplotlib, webview, pytest" >/dev/null 2>&1; then
     echo "  [..] Installing dependencies (first run only, ~5 min)..."
-    "$VPY" -m pip install --disable-pip-version-check --quiet \
-        fastapi "uvicorn[standard]" python-multipart pydantic chromadb \
-        sentence-transformers pymupdf python-docx python-pptx openpyxl \
-        reportlab markdown-it-py "huggingface_hub>=0.26" pywebview
+    "$VPY" -m pip install --disable-pip-version-check -r requirements-dev.txt || {
+        echo "  [X] Dependency install failed - check internet connection"
+        exit 1
+    }
     echo "  [ok] Dependencies installed"
 else
     echo "  [ok] Dependencies present"
@@ -75,11 +75,11 @@ fi
 
 # 5. offline self-test
 echo "  [..] Running offline sanity tests..."
-EMBEDDING_BACKEND=hash-stub "$VPY" -m pytest desktop/tests/ -q --no-header > /dev/null 2>&1 || {
-    echo "  [X] Self-test failed"
+EMBEDDING_BACKEND=hash-stub "$VPY" -m pytest desktop/tests/ -q --no-header | tail -n 15 || {
+    echo "  [X] Self-test failed - see output above"
     exit 1
 }
-echo "  [ok] Self-test passed (14/14)"
+echo "  [ok] Self-tests passed"
 
 echo ""
 echo "  Setup complete. Starting Fortis..."
