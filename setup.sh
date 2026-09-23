@@ -51,6 +51,7 @@ MARKER="$(dirname "$0")/.llama-cuda-ok"
 if ! "$VPY" -c "import llama_cpp" >/dev/null 2>&1; then
     echo "  [..] Installing the local AI engine (llama.cpp)..."
     OK=0
+    "$VPY" -m pip uninstall --disable-pip-version-check --yes llama_cpp_python >/dev/null 2>&1 || true
     if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
         echo "       NVIDIA GPU detected - trying the CUDA wheel first..."
         if "$VPY" -m pip install --disable-pip-version-check --quiet --only-binary :all: \

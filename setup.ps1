@@ -72,6 +72,10 @@ if ($LASTEXITCODE -ne 0) {
         return ($LASTEXITCODE -eq 0)
     }
 
+    if (Test-Path "$venvPy") {
+        & $venvPy -m pip uninstall --disable-pip-version-check --yes llama_cpp_python 2>$null | Out-Null
+    }
+
     if ($hasNvidia) {
         Write-Host "       NVIDIA GPU detected - trying the CUDA wheel first..."
         & $venvPy -m pip install --disable-pip-version-check --quiet --only-binary :all: llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
