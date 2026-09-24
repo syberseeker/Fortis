@@ -74,6 +74,7 @@ if ($LASTEXITCODE -ne 0) {
 
     if (Test-Path "$venvPy") {
         & $venvPy -m pip uninstall --disable-pip-version-check --yes llama_cpp_python 2>$null | Out-Null
+        $LASTEXITCODE = 0
     }
 
     if ($hasNvidia) {
@@ -86,6 +87,7 @@ if ($LASTEXITCODE -ne 0) {
         } else {
             Write-Host "       CUDA wheel failed to install or import - cleaning up and trying the CPU wheel..."
             & $venvPy -m pip uninstall --disable-pip-version-check --yes llama_cpp_python 2>$null | Out-Null
+            $LASTEXITCODE = 0
         }
     }
     if (-not $ok) {
@@ -97,6 +99,7 @@ if ($LASTEXITCODE -ne 0) {
         } else {
             Write-Host "       CPU wheel unavailable - cleaning up and trying PyPI (may build from source)..."
             & $venvPy -m pip uninstall --disable-pip-version-check --yes llama_cpp_python 2>$null | Out-Null
+            $LASTEXITCODE = 0
         }
     }
     if (-not $ok) {
