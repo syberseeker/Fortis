@@ -2,8 +2,9 @@
 Hardware detection for model tier selection.
 
 Detects, best-effort and without hard dependencies:
-- NVIDIA VRAM (pynvml if available, else nvidia-smi CLI)
+- NVIDIA VRAM, total and free (pynvml if available, else nvidia-smi CLI)
 - system RAM
+- logical core count (hyperthreading-adjusted estimate for worker threads)
 - CUDA availability for llama.cpp (presence of an NVIDIA driver is treated
   as the proxy; whether the installed wheel actually has CUDA is checked by
   the setup script at install time and recorded to a marker file)
@@ -24,12 +25,60 @@ class Hardware:
     has_nvidia: bool
 
 
+def cuda_marker_exists() -> bool:
+    """True when the setup script recorded a verified CUDA llama-cpp wheel."""
+    marker = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".llama-cuda-ok")
+    return os.path.exists(marker)
+
+
 def can_use_cuda() -> bool:
     """True when the llama-cpp wheel is believed to have CUDA support: an
     NVIDIA GPU is present AND the install-time marker was written by the
     setup script (which verified the CUDA wheel imported)."""
-    marker = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".llama-cuda-ok")
-    return _vram_gb() > 0.0 and os.path.exists(marker)
+    return _vram_gb() > 0.0 and cuda_marker_exists()
+
+
+def free_vram_gb() -> float:
+    """Free (not total) VRAM on GPU 0, used to size partial layer offload.
+    0.0 when no NVIDIA GPU is present or the query fails."""
+    try:
+        import pynvml  # type: ignore
+        pynvml.nvmlInit()
+        try:
+            h = pynvml.nvmlDeviceGetHandleByIndex(0)
+            return pynvml.nvmlDeviceGetMemoryInfo(h).free / (1024 ** 3)
+        finally:
+            pynvml.nvmlShutdown()
+    except Exception:
+        pass
+    smi = shutil.which("nvidia-smi")
+    if smi:
+        try:
+            out = subprocess.run(
+                [smi, "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5,
+            )
+            mb = int(out.stdout.strip().splitlines()[0])
+            return mb / 1024.0
+        except Exception:
+            pass
+    return 0.0
+
+
+def physical_core_estimate() -> int:
+    """Best-effort physical core count for llama.cpp worker threads: the
+    logical count, halved when >= 16 logical CPUs (hyperthreading SMT
+    assumption). settings.n_threads > 0 overrides the estimate."""
+    try:
+        from core.config import settings
+        if settings.n_threads > 0:
+            return int(settings.n_threads)
+    except Exception:
+        pass
+    logical = os.cpu_count() or 0
+    if logical >= 16:
+        logical //= 2
+    return max(1, logical)
 
 
 def _ram_gb() -> float:

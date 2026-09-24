@@ -45,13 +45,14 @@ async def chat(
     messages: List[Dict[str, str]],
     temperature: float = 0.2,
     json_mode: bool = False,
+    max_tokens: int | None = None,
 ) -> str:
     backend = _resolve()
     if backend == "llama":
         from engine.llama_engine import chat as llama_chat
-        return await llama_chat(messages, temperature=temperature, json_mode=json_mode)
+        return await llama_chat(messages, temperature=temperature, json_mode=json_mode, max_tokens=max_tokens)
     from engine.stub_backend import chat as stub_chat
-    return await stub_chat(messages, temperature=temperature, json_mode=json_mode)
+    return await stub_chat(messages, temperature=temperature, json_mode=json_mode, max_tokens=max_tokens)
 
 
 async def chat_stream(

@@ -84,6 +84,7 @@ async def chat(
     messages: List[Dict[str, str]],
     temperature: float = 0.2,
     json_mode: bool = False,
+    max_tokens: int | None = None,
 ) -> str:
     import json as _json
 
