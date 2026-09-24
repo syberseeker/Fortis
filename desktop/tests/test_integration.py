@@ -236,7 +236,7 @@ def test_report_generation_flat_path(client, call_log, fmt, magic_check):
 
     resp = client.post(
         "/report/generate",
-        json={"engagement_id": eng["id"], "format": fmt, "focus_instructions": ""},
+        json={"engagement_id": eng["id"], "format": fmt, "focus_instructions": "", "allow_stub": True},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -254,7 +254,7 @@ def test_report_generation_flat_path(client, call_log, fmt, magic_check):
 def test_report_generation_requires_uploaded_documents(client):
     eng = _make_engagement(client, "Empty Co", "No Docs")
     resp = client.post(
-        "/report/generate", json={"engagement_id": eng["id"], "format": "docx"}
+        "/report/generate", json={"engagement_id": eng["id"], "format": "docx", "allow_stub": True}
     )
     assert resp.status_code == 400
 
@@ -274,7 +274,7 @@ def test_report_generation_triggers_map_reduce_for_large_doc(client, call_log):
     )
 
     resp = client.post(
-        "/report/generate", json={"engagement_id": eng["id"], "format": "docx"}
+        "/report/generate", json={"engagement_id": eng["id"], "format": "docx", "allow_stub": True}
     )
     assert resp.status_code == 200
 
@@ -497,7 +497,7 @@ def test_report_with_zero_findings_renders(client, monkeypatch):
     )
     
     resp = client.post(
-        "/report/generate", json={"engagement_id": eng["id"], "format": "docx"}
+        "/report/generate", json={"engagement_id": eng["id"], "format": "docx", "allow_stub": True}
     )
     assert resp.status_code == 200
     assert resp.json()["findings_count"] == 0

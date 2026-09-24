@@ -25,7 +25,7 @@ import json
 import logging
 from typing import List, Dict, Tuple
 
-from . import vectorstore, store
+from . import vectorstore, store, progress
 from .config import settings
 from engine import chat
 from .reports.schema import SecurityReport
@@ -204,16 +204,24 @@ def _engagement_header(engagement_id: str) -> str:
 
 
 async def _call_json(system_prompt: str, user_content: str) -> Dict:
+    try:
+        return await _call_json_once(system_prompt, user_content)
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Malformed analysis JSON; retrying once")
+    try:
+        return await _call_json_once(system_prompt, user_content)
+    except (json.JSONDecodeError, ValueError):
+        logger.error("Model returned invalid JSON twice")
+        raise ValueError("Analysis model returned malformed output. Try again.")
+
+
+async def _call_json_once(system_prompt: str, user_content: str) -> Dict:
     raw = await chat(
         [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}],
         temperature=0.1,
         json_mode=True,
     )
-    try:
-        return _parse_json_response(raw)
-    except (json.JSONDecodeError, ValueError):
-        logger.error("Model did not return valid JSON (length=%d)", len(raw))
-        raise ValueError("Analysis model returned malformed output. Try again.")
+    return _parse_json_response(raw)
 
 
 def _parse_json_response(text: str) -> Dict:
@@ -241,7 +249,7 @@ async def _generate_flat(engagement_id: str, focus_instructions: str) -> Securit
     parts = ["=== Uploaded document excerpts ==="]
     for filename in filenames:
         for i, chunk in enumerate(vectorstore.get_document_chunks(engagement_id, filename)):
-            parts.append(f"[{filename} â€” chunk {i}]\n{chunk}")
+            parts.append(f"[{filename} — chunk {i}]\n{chunk}")
 
     user_content = (
         _engagement_header(engagement_id)
@@ -258,8 +266,22 @@ async def _generate_flat(engagement_id: str, focus_instructions: str) -> Securit
 
 # ---- Map-reduce path (large engagements) ---------------------------------
 
-async def _map_document(filename: str, chunks: List[str]) -> Tuple[List[Dict], List[str]]:
-    batches = _batch_chunks(chunks, settings.map_batch_tokens)
+def _effective_batch_tokens() -> int:
+    if settings.engine_slow_backend:
+        return settings.map_batch_tokens * 2
+    return settings.map_batch_tokens
+
+
+def _plan_map_batches(engagement_id: str, filenames: List[str], max_tokens: int) -> List[Tuple[str, List[List[str]]]]:
+    """Pre-plans every file's batches once so progress totals are exact and
+    slow backends can use fewer, larger LLM calls."""
+    plan: List[Tuple[str, List[List[str]]]] = []
+    for filename in filenames:
+        chunks = vectorstore.get_document_chunks(engagement_id, filename)
+        plan.append((filename, _batch_chunks(chunks, max_tokens)))
+    return plan
+
+async def _map_document(filename: str, batches: List[List[str]]) -> Tuple[List[Dict], List[str]]:
     all_findings: List[Dict] = []
     all_key_points: List[str] = []
 
@@ -270,23 +292,30 @@ async def _map_document(filename: str, chunks: List[str]) -> Tuple[List[Dict], L
             finding.setdefault("source_file", filename)
             all_findings.append(finding)
         all_key_points.extend(data.get("key_points", []))
+        progress.advance(detail=f"{filename} batch {batch_num}/{len(batches)}")
 
     return all_findings, all_key_points
 
 
 async def _generate_map_reduce(engagement_id: str, focus_instructions: str) -> SecurityReport:
     filenames = vectorstore.list_engagement_files(engagement_id)
+    plan = _plan_map_batches(engagement_id, filenames, _effective_batch_tokens())
+
+    progress.start(
+        total=sum(len(batches) for _, batches in plan) + 1,
+        detail=f"{sum(len(b) for _, b in plan)} batches across {len(filenames)} file(s)",
+    )
 
     all_candidate_findings: List[Dict] = []
     file_summaries: List[str] = []
 
-    for filename in filenames:
-        chunks = vectorstore.get_document_chunks(engagement_id, filename)
-        findings, key_points = await _map_document(filename, chunks)
+    for filename, batches in plan:
+        findings, key_points = await _map_document(filename, batches)
         all_candidate_findings.extend(findings)
         if key_points:
             file_summaries.append(f"{filename}: " + "; ".join(key_points))
 
+    progress.update(done=progress.snapshot()["total"] - 1, stage="reduce", detail="Merging candidate findings")
     reduce_parts = [_engagement_header(engagement_id)]
     reduce_parts.append("=== Per-file summaries ===\n" + "\n".join(file_summaries))
     reduce_parts.append(
@@ -305,6 +334,16 @@ async def _generate_map_reduce(engagement_id: str, focus_instructions: str) -> S
 # ---- Entry point ----------------------------------------------------------
 
 async def generate_security_report(engagement_id: str, focus_instructions: str = "") -> SecurityReport:
+    try:
+        report = await _generate_security_report_inner(engagement_id, focus_instructions)
+    except Exception:
+        progress.fail()
+        raise
+    progress.finish()
+    return report
+
+
+async def _generate_security_report_inner(engagement_id: str, focus_instructions: str = "") -> SecurityReport:
     filenames = vectorstore.list_engagement_files(engagement_id)
     if not filenames:
         raise ValueError("No documents have been uploaded for this engagement yet.")
@@ -319,6 +358,7 @@ async def generate_security_report(engagement_id: str, focus_instructions: str =
             "Engagement %s: %d tokens <= threshold, using flat analysis pass",
             engagement_id, total_tokens,
         )
+        progress.start(total=1, detail="Single-pass analysis")
         return await _generate_flat(engagement_id, focus_instructions)
 
     logger.info(

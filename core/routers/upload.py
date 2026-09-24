@@ -58,11 +58,12 @@ async def upload_file(
     if not text.strip():
         raise HTTPException(422, "No extractable text found in this file.")
 
-    chunks = chunk_text_enriched(text, _clean_filename(file.filename))
-    n_added = vectorstore.add_user_document_chunks(engagement_id, _clean_filename(file.filename), chunks)
+    display_name = _safe_disk_filename(_clean_filename(file.filename)) or file.filename
+    chunks = chunk_text_enriched(text, display_name)
+    n_added = vectorstore.add_user_document_chunks(engagement_id, display_name, chunks)
 
     return {
-        "filename": file.filename,
+        "filename": display_name,
         "chunks_indexed": n_added,
         "characters_extracted": len(text),
         "engagement_id": engagement_id,

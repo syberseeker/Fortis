@@ -58,6 +58,22 @@ _REFUSAL_MARKERS = (
 _RENDERERS = {"docx": render_docx, "pptx": render_pptx, "pdf": render_pdf}
 
 
+def _is_stub_backend() -> bool:
+    try:
+        import engine
+        return engine.get_backend() == "stub" or (
+            engine.get_backend() == "auto" and engine._resolve() == "stub"
+        )
+    except Exception:
+        return True
+
+
+def core_gate_message() -> str:
+    from core.routers.report import _STUB_GATE_MSG
+
+    return _STUB_GATE_MSG
+
+
 def _run_async(coro):
     """Runs an async core function from sync code. When already inside an
     event loop (FastAPI endpoint), runs it on a worker thread instead of
@@ -265,15 +281,28 @@ class Orchestrator:
         if "error" in result:
             return f"Report generation failed: {result['error']}"
         eng = result.get("engagement", {})
+        warning = ""
+        if _is_stub_backend():
+            warning = (
+                "**WARNING: Placeholder report** — no model is loaded, so this report "
+                "contains stub data and must not be delivered to a client.\n\n"
+            )
         return (
-            f"**Security report generated** for {eng.get('client_name', '')} — "
+            f"{warning}**Security report generated** for {eng.get('client_name', '')} — "
             f"{eng.get('engagement_name', '')} ({fmt.upper()})\n\n"
             f"- Findings: {result['findings_count']}\n"
             f"- Overall risk rating: **{result['overall_risk_rating']}**\n"
             f"- [Download the report]({result['download_url']})"
         )
 
-    def generate_report_download(self, engagement_id: str, fmt: str, focus_text: str = "") -> Dict:
+    def generate_report_download(
+        self,
+        engagement_id: str,
+        fmt: str,
+        focus_text: str = "",
+        allow_stub: bool = False,
+        enforce_stub_gate: bool = False,
+    ) -> Dict:
         import asyncio
         import uuid
 
@@ -283,6 +312,8 @@ class Orchestrator:
         engagement = store.get_engagement(engagement_id)
         if not engagement:
             return {"error": f"Engagement '{engagement_id}' not found."}
+        if enforce_stub_gate and _is_stub_backend() and not allow_stub:
+            return {"error": core_gate_message(), "stub_gate": True}
         try:
             report = _run_async(core_analysis(engagement_id, focus_text))
         except ValueError as e:

@@ -155,7 +155,7 @@ def test_one_mb_document_report_generation(client, call_log):
 
     gen = client.post(
         "/report/generate",
-        json={"engagement_id": eng["id"], "format": "docx", "focus_instructions": ""},
+        json={"engagement_id": eng["id"], "format": "docx", "focus_instructions": "", "allow_stub": True},
     )
     assert gen.status_code == 200
     data = gen.json()

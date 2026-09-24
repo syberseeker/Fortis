@@ -25,6 +25,31 @@ class ReportRequest(BaseModel):
     engagement_id: str
     format: str = "docx"  # docx | pptx | pdf
     focus_instructions: str = ""
+    allow_stub: bool = False
+
+
+def _is_stub_backend() -> bool:
+    try:
+        import engine
+        return engine.get_backend() == "stub" or (
+            engine.get_backend() == "auto" and engine._resolve() == "stub"
+        )
+    except Exception:
+        return True
+
+
+_STUB_GATE_MSG = (
+    "No model is loaded, so this report would contain placeholder (stub) data "
+    "and must not be delivered to a client. Download a model via the Model dialog, "
+    "or retry with allow_stub=true to acknowledge placeholder output."
+)
+
+
+def _enforce_stub_gate(allow_stub: bool) -> None:
+    """Single chokepoint for the placeholder-report gate; every report entry
+    path (HTTP router, /api/report/save, chat intent) must call this."""
+    if _is_stub_backend() and not allow_stub:
+        raise HTTPException(409, _STUB_GATE_MSG)
 
 
 @router.post("/generate")
@@ -36,6 +61,8 @@ async def generate_report(req: ReportRequest):
     engagement = store.get_engagement(req.engagement_id)
     if not engagement:
         raise HTTPException(404, f"Engagement '{req.engagement_id}' not found. Create or select one first.")
+
+    _enforce_stub_gate(req.allow_stub)
 
     try:
         report = await generate_security_report(req.engagement_id, req.focus_instructions)

@@ -55,9 +55,10 @@ async def command(req: CommandRequest):
 async def model_status():
     hw = detect()
     warning = await engine.check_model_available()
+    hardware_info = engine.llama_engine.hardware_status(hw)
+    hardware_info["can_cuda"] = can_use_cuda()
     return {
-        "hardware": {"ram_gb": round(hw.ram_gb, 1), "vram_gb": round(hw.vram_gb, 1),
-                     "has_nvidia": hw.has_nvidia, "can_cuda": can_use_cuda()},
+        "hardware": hardware_info,
         "suggested_tier": suggest_tier(hw),
         "suggested_tiers": suggest_tiers(hw),
         "tiers": model_manager.tier_status(),
@@ -100,6 +101,12 @@ async def model_download_progress():
     return model_manager.download_progress()
 
 
+@api.get("/report/progress")
+async def report_progress():
+    from core import progress
+    return progress.snapshot()
+
+
 class SelectRequest(BaseModel):
     tier: str = ""
     path: str = ""
@@ -140,9 +147,12 @@ async def report_save(req: dict):
     engagement_id = req.get("engagement_id", "")
     fmt = req.get("format", "docx")
     focus = req.get("focus_instructions", "")
-    result = orch.generate_report_download(engagement_id, fmt, focus)
+    allow_stub = bool(req.get("allow_stub", False))
+    result = orch.generate_report_download(
+        engagement_id, fmt, focus, allow_stub=allow_stub, enforce_stub_gate=True
+    )
     if "error" in result:
-        raise HTTPException(400, result["error"])
+        raise HTTPException(409 if result.get("stub_gate") else 400, result["error"])
     return result
 
 
