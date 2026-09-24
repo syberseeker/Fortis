@@ -23,7 +23,7 @@ class ChatRequest(BaseModel):
 
 def _require_engagement(engagement_id: str) -> None:
     if not store.get_engagement(engagement_id):
-        raise HTTPException(404, f"Engagement '{engagement_id}' not found. Create or select one first.")
+        raise HTTPException(404, f"Engagement '{store.clean(engagement_id)}' not found. Create or select one first.")
 
 
 async def run_structured_turn(engagement_id: str, message: str, history, intent: str, role: Optional[str] = None) -> str:
@@ -46,6 +46,10 @@ async def run_structured_turn(engagement_id: str, message: str, history, intent:
 @router.post("")
 async def chat_endpoint(req: ChatRequest):
     _require_engagement(req.engagement_id)
+    req.message = store.clean(req.message)
+    if req.history:
+        for entry in req.history:
+            entry["content"] = store.clean(entry.get("content", ""))
     role = req.role if req.role in ROLE_PRESETS else None
     retrieval_query = await condense_query(req.history, req.message, settings.rag_level)
     intent = detect_structured_output_request(req.message)
@@ -60,6 +64,10 @@ async def chat_endpoint(req: ChatRequest):
 @router.post("/stream")
 async def chat_stream_endpoint(req: ChatRequest):
     _require_engagement(req.engagement_id)
+    req.message = store.clean(req.message)
+    if req.history:
+        for entry in req.history:
+            entry["content"] = store.clean(entry.get("content", ""))
     role = req.role if req.role in ROLE_PRESETS else None
     retrieval_query = await condense_query(req.history, req.message, settings.rag_level)
     intent = detect_structured_output_request(req.message)

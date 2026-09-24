@@ -65,6 +65,15 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def clean(text: str) -> str:
+    """Hostile input can carry unpaired surrogates (a JSON \\ud800 escape
+    decodes to one), which sqlite3's utf-8 binding rejects outright. Replace
+    them so crafted strings 500 the API; valid text is byte-identical."""
+    if isinstance(text, str) and text:
+        return text.encode("utf-8", errors="replace").decode("utf-8")
+    return text
+
+
 def _slugify(text: str, max_len: int = 40) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return slug[:max_len].strip("-") or "item"
@@ -73,7 +82,7 @@ def _slugify(text: str, max_len: int = 40) -> str:
 # ---- Clients ----------------------------------------------------------
 
 def get_or_create_client(name: str) -> Dict:
-    name = name.strip()
+    name = clean(name).strip()
     with _conn() as conn:
         row = conn.execute("SELECT * FROM clients WHERE name = ?", (name,)).fetchone()
         if row:
@@ -102,8 +111,9 @@ def list_clients() -> List[Dict]:
 # ---- Engagements --------------------------------------------------------
 
 def create_engagement(client_name: str, engagement_name: str, notes: str = "") -> Dict:
-    client = get_or_create_client(client_name)
-    engagement_name = engagement_name.strip()
+    client = get_or_create_client(clean(client_name))
+    engagement_name = clean(engagement_name).strip()
+    notes = clean(notes)
     with _conn() as conn:
         existing = conn.execute(
             "SELECT * FROM engagements WHERE client_id = ? AND name = ?",
@@ -152,7 +162,7 @@ def get_engagement(engagement_id: str) -> Optional[Dict]:
         row = conn.execute(
             "SELECT e.*, c.name AS client_name FROM engagements e "
             "JOIN clients c ON c.id = e.client_id WHERE e.id = ?",
-            (engagement_id,),
+            (clean(engagement_id),),
         ).fetchone()
         return dict(row) if row else None
 
@@ -163,20 +173,20 @@ def find_engagement_by_names(client_name: str, engagement_name: str) -> Optional
             "SELECT e.*, c.name AS client_name FROM engagements e "
             "JOIN clients c ON c.id = e.client_id "
             "WHERE c.name = ? AND e.name = ?",
-            (client_name.strip(), engagement_name.strip()),
+            (clean(client_name).strip(), clean(engagement_name).strip()),
         ).fetchone()
         return dict(row) if row else None
 
 
 def set_engagement_status(engagement_id: str, status: str) -> None:
     with _conn() as conn:
-        conn.execute("UPDATE engagements SET status = ? WHERE id = ?", (status, engagement_id))
+        conn.execute("UPDATE engagements SET status = ? WHERE id = ?", (clean(status), clean(engagement_id)))
 
 
 def delete_engagement(engagement_id: str) -> None:
     with _conn() as conn:
-        conn.execute("DELETE FROM active_engagement WHERE engagement_id = ?", (engagement_id,))
-        conn.execute("DELETE FROM engagements WHERE id = ?", (engagement_id,))
+        conn.execute("DELETE FROM active_engagement WHERE engagement_id = ?", (clean(engagement_id),))
+        conn.execute("DELETE FROM engagements WHERE id = ?", (clean(engagement_id),))
 
 
 # ---- Active engagement per user -----------------------------------------
@@ -186,14 +196,14 @@ def set_active_engagement(user_id: str, engagement_id: str) -> None:
         conn.execute(
             "INSERT INTO active_engagement (user_id, engagement_id) VALUES (?, ?) "
             "ON CONFLICT(user_id) DO UPDATE SET engagement_id = excluded.engagement_id",
-            (user_id, engagement_id),
+            (clean(user_id), clean(engagement_id)),
         )
 
 
 def get_active_engagement(user_id: str) -> Optional[Dict]:
     with _conn() as conn:
         row = conn.execute(
-            "SELECT engagement_id FROM active_engagement WHERE user_id = ?", (user_id,)
+            "SELECT engagement_id FROM active_engagement WHERE user_id = ?", (clean(user_id),)
         ).fetchone()
         if not row:
             return None
@@ -202,4 +212,4 @@ def get_active_engagement(user_id: str) -> Optional[Dict]:
 
 def clear_active_engagement(user_id: str) -> None:
     with _conn() as conn:
-        conn.execute("DELETE FROM active_engagement WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM active_engagement WHERE user_id = ?", (clean(user_id),))

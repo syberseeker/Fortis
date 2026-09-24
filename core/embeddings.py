@@ -31,7 +31,7 @@ def _hash_vector(text: str, dim: int = 384) -> List[float]:
     """Deterministic pseudo-embedding derived from a text hash. Same input
     always yields the same vector; unrelated to semantic content. Test/dev
     only -- see module docstring."""
-    raw = hashlib.sha256(text.encode("utf-8")).digest()
+    raw = hashlib.sha256(text.encode("utf-8", errors="replace")).digest()
     while len(raw) < dim:
         raw += hashlib.sha256(raw).digest()
     values = [(b / 255.0) - 0.5 for b in raw[:dim]]
