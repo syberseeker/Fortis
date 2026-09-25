@@ -86,6 +86,9 @@ def build_context_block(engagement_id: str, query: str) -> str:
     return "\n\n".join(parts)
 
 
+_LLM_HISTORY_WINDOW = 16  # messages sent to the model, regardless of archive size
+
+
 def build_chat_messages(
     engagement_id: str,
     user_message: str,
@@ -93,7 +96,9 @@ def build_chat_messages(
     role: str = None,
     retrieval_query: str = None,
 ) -> List[Dict[str, str]]:
-    history = history or []
+    # Persisted history can be long; the model window stays bounded to the
+    # most recent turns regardless of how much the UI sends.
+    history = (history or [])[-_LLM_HISTORY_WINDOW:]
     context = build_context_block(engagement_id, retrieval_query if retrieval_query is not None else user_message)
 
     system_content = SYSTEM_PERSONA

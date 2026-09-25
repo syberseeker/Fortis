@@ -218,7 +218,8 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18
     <span id="status-dot"></span>
     <span class="eng-title" id="eng-title">No engagement selected</span>
     <span class="spacer"></span>
-    <button id="model-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Model</button>
+    <button id="clear-chat-btn" title="Delete the saved chat history for this engagement" style="display:none">Clear chat</button>
+    <button id="model-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010-2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Model</button>
   </div>
   <div id="chat"><div id="chat-inner">
     <div id="empty">
@@ -461,6 +462,7 @@ async function loadEngagements() {
     } catch { activeId = null; }
     renderEngagements();
     updateComposerState();
+    await restoreChatHistory();
   } catch (e) { status('Failed to load engagements: ' + e.message, true); }
 }
 
@@ -520,8 +522,25 @@ async function activateEngagement(id) {
     activeId = id;
     renderEngagements();
     await refreshFiles();
+    await restoreChatHistory();
     updateComposerState();
   } catch (e) { status('Switch failed: ' + e.message, true); }
+}
+
+async function restoreChatHistory() {
+  if (!activeId) { restoreEmptyState(); return; }
+  try {
+    const h = await api('/chat/history/' + encodeURIComponent(activeId));
+    const turns = h.turns || [];
+    restoreEmptyState();
+    history = turns.map((t) => ({ role: t.role, content: t.content }));
+    for (const t of turns) addMsg(t.role, t.content);
+    if (turns.length) {
+      const c = $('chat');
+      c.scrollTop = c.scrollHeight;
+      status(`Restored ${turns.length} message${turns.length === 1 ? '' : 's'} for this engagement.`);
+    }
+  } catch { /* history is best-effort; fresh chat is fine */ }
 }
 
 async function refreshFiles() {
@@ -537,6 +556,7 @@ function updateComposerState() {
   $('btn-send').disabled = busy || !activeId;
   $('input').style.opacity = activeId ? '1' : '.5';
   $('input').style.pointerEvents = activeId ? 'auto' : 'none';
+  $('clear-chat-btn').style.display = activeId ? '' : 'none';
 }
 
 /* ---------- chat ---------- */
@@ -776,6 +796,20 @@ $('btn-open-reports').onclick = async () => {
     status('Reports folder opened.');
   } catch (e) {
     status('Could not open reports folder: ' + e.message, true);
+  }
+};
+
+$('clear-chat-btn').onclick = async () => {
+  if (!activeId) return;
+  const confirmed = confirm('Delete the saved chat history for this engagement?\n\nThis cannot be undone. Uploaded documents and reports are kept.');
+  if (!confirmed) return;
+  try {
+    await api('/chat/history/' + encodeURIComponent(activeId) + '?confirm=true', { method: 'DELETE' });
+    history = [];
+    restoreEmptyState();
+    status('Chat history cleared for this engagement.');
+  } catch (e) {
+    status('Could not clear chat history: ' + e.message, true);
   }
 };
 

@@ -7,7 +7,7 @@ Concepts:
 - Client: an organization/person you're advising (e.g. "Acme Corp").
 - Engagement: a bounded piece of work for a client (e.g. "Q3 2026 Config
   Review"). Documents, chat history context, and reports are scoped to an
-  engagement, not to a chat window â€” so switching Open WebUI chats, or
+  engagement, not to a chat window — so switching Open WebUI chats, or
   coming back a week later, doesn't lose your uploaded material.
 - active_engagement: which engagement a given Open WebUI user currently has
   selected, so the pipe doesn't need to ask every turn.
@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
 from .config import settings
+
+CHAT_HISTORY_CAP = 500  # newest turns kept per engagement
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS clients (
@@ -41,6 +43,17 @@ CREATE TABLE IF NOT EXISTS active_engagement (
     user_id TEXT PRIMARY KEY,
     engagement_id TEXT NOT NULL REFERENCES engagements(id)
 );
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engagement_id TEXT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_engagement
+    ON chat_messages(engagement_id, id);
 """
 
 
@@ -186,6 +199,7 @@ def set_engagement_status(engagement_id: str, status: str) -> None:
 def delete_engagement(engagement_id: str) -> None:
     with _conn() as conn:
         conn.execute("DELETE FROM active_engagement WHERE engagement_id = ?", (clean(engagement_id),))
+        conn.execute("DELETE FROM chat_messages WHERE engagement_id = ?", (clean(engagement_id),))
         conn.execute("DELETE FROM engagements WHERE id = ?", (clean(engagement_id),))
 
 
@@ -213,3 +227,54 @@ def get_active_engagement(user_id: str) -> Optional[Dict]:
 def clear_active_engagement(user_id: str) -> None:
     with _conn() as conn:
         conn.execute("DELETE FROM active_engagement WHERE user_id = ?", (clean(user_id),))
+
+
+# ---- Chat history per engagement -----------------------------------------
+
+def append_chat_message(engagement_id: str, role: str, content: str) -> int:
+    """Stores one chat turn. Validates engagement existence (raises KeyError)
+    so a race with engagement deletion cannot orphan rows. Older turns beyond
+    CHAT_HISTORY_CAP are pruned."""
+    if role not in ("user", "assistant"):
+        raise ValueError(f"Invalid chat role: {role!r}")
+    if not get_engagement(engagement_id):
+        raise KeyError(f"Engagement '{engagement_id}' not found.")
+    content = clean(content)
+    with _conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO chat_messages (engagement_id, role, content, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (clean(engagement_id), role, content, _now()),
+        )
+        conn.execute(
+            "DELETE FROM chat_messages WHERE engagement_id = ? AND id NOT IN ("
+            "SELECT id FROM chat_messages WHERE engagement_id = ? "
+            "ORDER BY id DESC LIMIT ?)",
+            (clean(engagement_id), clean(engagement_id), CHAT_HISTORY_CAP),
+        )
+        return cur.lastrowid
+
+
+def get_chat_history(engagement_id: str, limit: int = CHAT_HISTORY_CAP) -> List[Dict]:
+    """Returns persisted turns oldest-first, capped at the most recent *limit*."""
+    if not get_engagement(engagement_id):
+        raise KeyError(f"Engagement '{engagement_id}' not found.")
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT role, content, created_at FROM ("
+            "  SELECT id, role, content, created_at FROM chat_messages"
+            "  WHERE engagement_id = ? ORDER BY id DESC LIMIT ?"
+            ") ORDER BY id ASC",
+            (clean(engagement_id), max(1, int(limit))),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def clear_chat_history(engagement_id: str) -> int:
+    if not get_engagement(engagement_id):
+        raise KeyError(f"Engagement '{engagement_id}' not found.")
+    with _conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM chat_messages WHERE engagement_id = ?", (clean(engagement_id),)
+        )
+        return cur.rowcount
