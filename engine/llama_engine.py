@@ -321,11 +321,13 @@ async def chat(
     ensure_loaded()
     llm = _STATE["model"]
     loop = asyncio.get_running_loop()
+    # Resolve the default outside the executor closure: assigning to
+    # max_tokens inside run() would make it a closure-local name and the
+    # first read would raise UnboundLocalError.
+    limit = max_tokens if max_tokens is not None else (3072 if json_mode else 2048)
 
     def run() -> str:
-        if max_tokens is None:
-            max_tokens = 3072 if json_mode else 2048
-        out = _complete(llm, messages, temperature, max_tokens)
+        out = _complete(llm, messages, temperature, limit)
         content = out["choices"][0]["message"].get("content", "") or ""
         content = _clean(content)
         if json_mode:
@@ -392,16 +394,3 @@ def unload() -> None:
         _STATE["path"] = None
         _STATE["error"] = None
         _STATE["offload_level"] = None
-
-
-def _extract_json_text(raw: str) -> str:
-    """Lenient JSON extraction (kept for reference by chat(); json output
-    cleaning happens there)."""
-    text = raw.strip()
-    if text.startswith("```"):
-        lines = [l for l in text.splitlines() if not l.strip().startswith("```")]
-        text = "\n".join(lines).strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        return text[start:end + 1]
-    return text
