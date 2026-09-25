@@ -10,7 +10,8 @@ analysis grounded in NIST CSF / OWASP Top 10 / CIS Controls, downloadable as
 DOCX, PPTX, or PDF.
 
 No Docker. No cloud APIs. One script, one window. All data stays on the
-machine (`%APPDATA%\Fortis` on Windows, `~/.local/share/Fortis` elsewhere).
+machine (`%APPDATA%\Fortis` on Windows, `~/.local/share/Fortis` elsewhere) —
+models, vector store, uploads, reports, engagement store, and chat history.
 
 ## Quick start
 
@@ -65,6 +66,7 @@ Retrieval quality is tiered via `RAG_LEVEL` (see `.env.example`):
 │ core/    ingestion · ChromaDB · embeddings   │
 │          RAG + persona · map-reduce analysis │
 │          DOCX/PPTX/PDF renderers · SQLite    │
+│          (engagements + chat history)        │
 └──────────────────────────────────────────────┘
 ```
 
@@ -73,15 +75,23 @@ Retrieval quality is tiered via `RAG_LEVEL` (see `.env.example`):
 - `engine/` replaces Ollama with in-process llama.cpp; models are Qwen3.5
   Q4_K_M GGUFs pulled from Hugging Face with resume support.
 - `server/` adds the UI-facing API (model picker, slash commands) and the
-  chat interface (streaming, markdown tables, engagement sidebar).
+  chat interface (streaming, markdown tables, engagement sidebar, report
+  generation from chat).
 
 ## Engagements
 
-Documents, chat grounding, and reports are scoped to a persistent
-**engagement** (a client + a piece of work). Create/switch/close them with
-sidebar buttons or the original slash commands (`/new-engagement Client ::
-Name`, `/engagements`, `/use <id>`, `/whoami`, `/close-engagement`).
-Everything survives restarts.
+Documents, chat grounding, chat history, and reports are scoped to a
+persistent **engagement** (a client + a piece of work). Create/switch/close
+them with sidebar buttons or slash commands (`/new-engagement Client ::
+Name`, `/engagements`, `/use <id>`, `/whoami`, `/close-engagement`,
+`/report [docx|pptx|pdf]`).
+
+Everything survives restarts — including the conversation: chat turns are
+stored per engagement (newest 500) and restored automatically when you
+reopen the app or switch back. **Clear chat** (top bar) deletes the saved
+transcript for the active engagement; uploaded documents and reports are
+kept. Asking for a report in chat ("generate a pdf report") generates the
+real file into the reports folder and replies with a download link.
 
 ## Headless / server mode
 
@@ -96,13 +106,18 @@ python -m server.app --port 8757     # same UI at http://127.0.0.1:8757
 - ISN'T: a malware sandbox, network scanner, or PCAP deep-inspection tool.
   The persona says so if asked.
 
+Privacy: everything — models, documents, chat history, reports — stays in
+`%APPDATA%\Fortis` (or `~/.local/share/Fortis`). Nothing is sent anywhere;
+there are no telemetry or cloud calls.
+
 ## Repo layout
 
 ```
 fortis/
 ├── setup.ps1 / setup.sh       # one-command setup + launch
 ├── core/                      # RAG backend (lib): ingestion, Chroma, RAG,
-│   │                          # map-reduce analysis, report renderers, store
+│   │                          # map-reduce analysis, report renderers,
+│   │                          # report intent, engagement/chat store
 │   ├── frameworks/            # NIST/OWASP/CIS/… seed corpus + PDF loader
 │   └── reports/               # docx/pptx/pdf renderers + schema
 ├── engine/                    # llama.cpp runtime, GGUF tiers, hw detection
