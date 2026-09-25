@@ -152,7 +152,7 @@ async def report_save(req: dict):
         engagement_id, fmt, focus, allow_stub=allow_stub, enforce_stub_gate=True
     )
     if "error" in result:
-        raise HTTPException(409 if result.get("stub_gate") else 400, result["error"])
+        raise HTTPException(result.get("status", 400), result["error"])
     return result
 
 

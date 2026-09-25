@@ -624,6 +624,20 @@ async function send() {
     history.push({ role: 'user', content: text });
     history.push({ role: 'assistant', content: acc });
     if (history.length > 16) history = history.slice(-16);
+    // report download links must leave the app shell (pywebview) instead of
+    // navigating the window; open them in the system browser
+    const lastBubble = bubble;
+    if (lastBubble && lastBubble.querySelector('a[href^="/report/download/"]')) {
+      lastBubble.querySelectorAll('a[href^="/report/download/"]').forEach((a) => {
+        a.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          fetch('/api/open-external', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: location.origin + a.getAttribute('href') }),
+          }).catch(() => { location.href = a.getAttribute('href'); });
+        });
+      });
+    }
     status('');
   } catch (e) {
     if (bubble) { bubble.innerHTML = renderMd('⚠️ ' + (e.message || 'Request failed')); enhanceMermaid(bubble); }
@@ -916,7 +930,7 @@ function looksLikeReportRequest(text) {
   const t = (text || '').toLowerCase();
   if (/^\/report\b/.test(t)) return true;
   const action = /\b(generate|create|give|make|produce|write|export|download|build)\b/;
-  const deliverable = /\b(report|summary|deck|presentation|docx|pptx|pdf|document|write-?up)\b/;
+  const deliverable = /\b(report|deck|presentation|docx|pptx|pdf|write-?up)\b/;
   return action.test(t) && deliverable.test(t);
 }
 

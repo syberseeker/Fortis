@@ -14,12 +14,15 @@ from typing import Dict, List, Optional
 from core import store, vectorstore, rag
 from core.config import settings
 from core.ingestion import extract_text, chunk_text_enriched
-from core.analysis import generate_security_report
-from core.reports.docx_report import render_docx
-from core.reports.pptx_report import render_pptx
-from core.reports.pdf_report import render_pdf
-from core.structured import detect_structured_output_request
+from core.report_intent import (
+    detect_report_request,
+    format_report_reply,
+    is_stub_backend,
+    stub_gate_message,
+)
 from core.routers.chat import run_structured_turn
+from core.routers.report import generate_report_result
+from core.structured import detect_structured_output_request
 import engine
 
 _LOCAL_USER = "local"
@@ -55,23 +58,12 @@ _REFUSAL_MARKERS = (
     "please ask a cybersecurity question",
 )
 
-_RENDERERS = {"docx": render_docx, "pptx": render_pptx, "pdf": render_pdf}
-
-
 def _is_stub_backend() -> bool:
-    try:
-        import engine
-        return engine.get_backend() == "stub" or (
-            engine.get_backend() == "auto" and engine._resolve() == "stub"
-        )
-    except Exception:
-        return True
+    return is_stub_backend()
 
 
 def core_gate_message() -> str:
-    from core.routers.report import _STUB_GATE_MSG
-
-    return _STUB_GATE_MSG
+    return stub_gate_message()
 
 
 def _run_async(coro):
@@ -96,19 +88,6 @@ def is_cybersecurity_related(text: str) -> bool:
 def is_offtopic_refusal(reply: str) -> bool:
     lowered = reply.lower()
     return any(m in lowered for m in _REFUSAL_MARKERS)
-
-
-def detect_report_request(text: str, default_format: str = "docx") -> Optional[str]:
-    t = text.lower()
-    action = r"\b(generate|create|give|make|produce|write|export|download|build)\b"
-    deliverable = r"\b(report|summary|deck|presentation|docx|pptx|pdf|document|write-?up)\b"
-    if not (re.search(action, t) and re.search(deliverable, t)):
-        return None
-    if any(k in t for k in ("pptx", "powerpoint", "slide", "deck", "presentation")):
-        return "pptx"
-    if "pdf" in t:
-        return "pdf"
-    return default_format
 
 
 class Orchestrator:
@@ -155,7 +134,28 @@ class Orchestrator:
             return self._whoami()
         if low.startswith("/close-engagement"):
             return self._close_active()
+        if low.startswith("/report"):
+            return self._report_cmd(t[len("/report"):])
         return None
+
+    def _report_cmd(self, body: str) -> str:
+        parts = body.strip().split()
+        fmt = (parts[0].lower() if parts else "docx")
+        if fmt in ("pptx", "powerpoint"):
+            fmt = "pptx"
+        if fmt not in ("docx", "pptx", "pdf"):
+            fmt = "docx"
+        eng = self.active_engagement()
+        if not eng:
+            return "No active engagement. Use `/new-engagement Client :: Name` or the + button."
+        if _is_stub_backend():
+            from core.report_intent import chat_stub_gate_reply
+
+            return chat_stub_gate_reply()
+        result = self.generate_report_download(eng["id"], fmt)
+        if "error" in result:
+            return f"Report generation failed: {result['error']}"
+        return format_report_reply(result, _is_stub_backend())
 
     def _list_engagements(self) -> str:
         engagements = store.list_engagements()
@@ -277,23 +277,22 @@ class Orchestrator:
     # ---- reports ----------------------------------------------------------------
 
     def generate_report(self, engagement_id: str, fmt: str, focus_text: str = "") -> str:
-        result = self.generate_report_download(engagement_id, fmt, focus_text)
+        result = _run_async(generate_report_result(engagement_id, fmt, focus_text))
         if "error" in result:
             return f"Report generation failed: {result['error']}"
-        eng = result.get("engagement", {})
-        warning = ""
-        if _is_stub_backend():
-            warning = (
-                "**WARNING: Placeholder report** — no model is loaded, so this report "
-                "contains stub data and must not be delivered to a client.\n\n"
-            )
-        return (
-            f"{warning}**Security report generated** for {eng.get('client_name', '')} — "
-            f"{eng.get('engagement_name', '')} ({fmt.upper()})\n\n"
-            f"- Findings: {result['findings_count']}\n"
-            f"- Overall risk rating: **{result['overall_risk_rating']}**\n"
-            f"- [Download the report]({result['download_url']})"
-        )
+        return format_report_reply(result, _is_stub_backend())
+
+    async def _agenerate_report_download(
+        self,
+        engagement_id: str,
+        fmt: str,
+        focus_text: str = "",
+        allow_stub: bool = False,
+        enforce_stub_gate: bool = False,
+    ) -> Dict:
+        # enforce_stub_gate is accepted for call-site compatibility; the gate
+        # is always enforced inside generate_report_result now.
+        return await generate_report_result(engagement_id, fmt, focus_text, allow_stub=allow_stub)
 
     def generate_report_download(
         self,
@@ -303,37 +302,8 @@ class Orchestrator:
         allow_stub: bool = False,
         enforce_stub_gate: bool = False,
     ) -> Dict:
-        import asyncio
-        import uuid
-
-        fmt = fmt.lower()
-        if fmt not in _RENDERERS:
-            return {"error": f"format must be one of {list(_RENDERERS)}"}
-        engagement = store.get_engagement(engagement_id)
-        if not engagement:
-            return {"error": f"Engagement '{engagement_id}' not found."}
-        if enforce_stub_gate and _is_stub_backend() and not allow_stub:
-            return {"error": core_gate_message(), "stub_gate": True}
-        try:
-            report = _run_async(core_analysis(engagement_id, focus_text))
-        except ValueError as e:
-            return {"error": str(e)}
-
-        filename = f"{engagement_id}_{uuid.uuid4().hex[:6]}.{fmt}"
-        output_path = os.path.join(settings.report_dir, filename)
-        _RENDERERS[fmt](report, output_path)
-        return {
-            "download_url": f"/report/download/{filename}",
-            "filename": filename,
-            "findings_count": len(report.findings),
-            "overall_risk_rating": report.overall_risk_rating,
-            "engagement": {
-                "client_name": engagement["client_name"],
-                "engagement_name": engagement["name"],
-            },
-        }
-
-
-async def core_analysis(engagement_id: str, focus_text: str):
-    from core.analysis import generate_security_report
-    return await generate_security_report(engagement_id, focus_text)
+        return _run_async(
+            self._agenerate_report_download(
+                engagement_id, fmt, focus_text, allow_stub=allow_stub, enforce_stub_gate=enforce_stub_gate
+            )
+        )

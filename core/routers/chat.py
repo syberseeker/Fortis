@@ -5,10 +5,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .. import rag, store
+from .. import report_intent as ri
 from ..config import settings
 from ..condense import condense_query
 from ..rag import ROLE_PRESETS
 from ..structured import FORMAT_INSTRUCTIONS, REPAIR_INSTRUCTIONS, detect_structured_output_request, reply_has_valid_diagram, is_valid_gfm_table
+from .report import generate_report_result
 from engine import chat, chat_stream
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -50,6 +52,14 @@ async def chat_endpoint(req: ChatRequest):
     if req.history:
         for entry in req.history:
             entry["content"] = store.clean(entry.get("content", ""))
+    fmt = ri.detect_report_request(req.message)
+    if fmt:
+        if ri.is_stub_backend():
+            return {"reply": ri.chat_stub_gate_reply()}
+        result = await generate_report_result(req.engagement_id, fmt, req.message)
+        if "error" in result:
+            raise HTTPException(result.get("status", 400), result["error"])
+        return {"reply": ri.format_report_reply(result, ri.is_stub_backend())}
     role = req.role if req.role in ROLE_PRESETS else None
     retrieval_query = await condense_query(req.history, req.message, settings.rag_level)
     intent = detect_structured_output_request(req.message)
@@ -68,6 +78,18 @@ async def chat_stream_endpoint(req: ChatRequest):
     if req.history:
         for entry in req.history:
             entry["content"] = store.clean(entry.get("content", ""))
+    fmt = ri.detect_report_request(req.message)
+    if fmt:
+        if ri.is_stub_backend():
+            async def gate_generator():
+                yield ri.chat_stub_gate_reply()
+            return StreamingResponse(gate_generator(), media_type="text/plain")
+        result = await generate_report_result(req.engagement_id, fmt, req.message)
+        if "error" in result:
+            raise HTTPException(result.get("status", 400), result["error"])
+        async def generator():
+            yield ri.format_report_reply(result, ri.is_stub_backend())
+        return StreamingResponse(generator(), media_type="text/plain")
     role = req.role if req.role in ROLE_PRESETS else None
     retrieval_query = await condense_query(req.history, req.message, settings.rag_level)
     intent = detect_structured_output_request(req.message)
