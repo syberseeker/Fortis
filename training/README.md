@@ -35,7 +35,9 @@ bash setup.sh
 ```
 
 Then: pick a model tier in the app (⚙ Model) → create an engagement →
-upload a lab document → chat. Details in `04-desktop-guide.md`.
+upload a lab document → chat. Chat history is saved per engagement and
+restored on restart; ask for "a docx report" (or use `/report docx`) to
+generate a real file with a download link. Details in `04-desktop-guide.md`.
 
 ### Sample Lab Documents
 

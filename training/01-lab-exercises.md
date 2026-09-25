@@ -153,9 +153,10 @@ In the Lab 4 engagement ask for `a sequence diagram of the incident response flo
 | Model download stalls | Interrupted Wi-Fi, VPN, or proxy during the one-time download | Click the tier again — downloads are resumable and pick up where they stopped; the instructor can also pre-download the tier for the room |
 | Replies are very slow | The model loads on first use, and the 4B tier is heavy on CPU-only machines | Wait for the first reply (10–60 s), or open **⚙ Model** and switch to the 0.8B or 2B tier |
 | No findings for a file type | The format was not recognized, or it ingested zero chunks | Check for the `ingested: N chunks indexed` confirmation — supported types include PDF, DOCX, PPTX, XLSX, CSV, configs, and code; if N is 0, convert the file or paste its content into the chat |
-| Report button does nothing | No model loaded, or the engagement has no attached documents yet | Confirm the status dot is green (open **⚙ Model** if not) and attach files first; reports always land in `%APPDATA%\Fortis\reports` — use **Open reports folder** |
+| Report request does nothing, or replies with a placeholder warning | No model loaded (stub mode), or the engagement has no attached documents yet | Confirm the status dot is green (open **⚙ Model** if not) and attach files first; stub mode never writes a file. Reports always land in `%APPDATA%\Fortis\reports` — use **Open reports folder** (sidebar). You can also trigger generation with `/report [docx\|pptx\|pdf]` |
+| Chat history disappeared after switching engagements | Older build — current builds restore the saved transcript per engagement | Restart Fortis: every turn is stored in `engagements.sqlite3` (newest 500) and restored on app start and engagement switch. Use **Clear chat** (top bar) to deliberately erase an engagement's transcript |
 | Browser opened instead of the native app window | The WebView2 runtime was unavailable, so the interface fell back to the default browser | These labs work identically in the browser view; to restore the native window, update Microsoft Edge or install the WebView2 Runtime and relaunch `setup.ps1` |
 
 ---
 
-For builder-level labs (API, custom frameworks, offline tests, Docker stack), see `00-workshop-guide.md`.
+For builder-level labs (API, custom frameworks, offline tests), see `00-workshop-guide.md`.

@@ -256,7 +256,9 @@ again in each new window.
 ### Move the data folder
 
 All persistent data lives in one folder: `%APPDATA%\Fortis` (models, the
-`chroma/` knowledge base, `uploads/`, `reports/`, and `engagements.sqlite3`).
+`chroma/` knowledge base, `uploads/`, `reports/`, and
+`engagements.sqlite3` — which also stores each engagement's chat history,
+newest 500 turns, restored on restart or engagement switch).
 To relocate it — e.g. to a bigger drive:
 
 ```powershell

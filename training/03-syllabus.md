@@ -138,7 +138,7 @@ Lab 3: 10, Lab 4: 10, Lab 5: 10); the rest is instruction and demos.
 ## Module 3 — First Engagement & Chat (20 min)
 
 - **Objective:** understand engagements as the unit of work, pick a model tier, and get a first answer.
-- **Instructor demos:** the **⚙ Model** picker (top right) and how hardware detection suggests a tier; creating an engagement with **+ New engagement** (sidebar); sending the first message and narrating the one-time model download (~3.4 GB for the default 4B tier, resumable); the 10–60 s first-answer load.
+- **Instructor demos:** the **⚙ Model** picker (top right) and how hardware detection suggests a tier; creating an engagement with **+ New engagement** (sidebar); sending the first message and narrating the one-time model download (~3.4 GB for the default 4B tier, resumable); the 10–60 s first-answer load. Mention that every chat turn is saved per engagement (newest 500) and restored when they switch back or restart — switching engagements mid-lab no longer loses the conversation, and **Clear chat** (top bar) deliberately erases the active engagement's transcript.
 - **Participants do:** Lab 1 — launch is already done, so they create an engagement and send their first message, watching the download progress.
 - **Lab:** **Lab 1** (verify setup & first chat).
 
@@ -152,7 +152,7 @@ Lab 3: 10, Lab 4: 10, Lab 5: 10); the rest is instruction and demos.
 ## Module 5 — Reports & Personas (25 min)
 
 - **Objective:** produce a deliverable report and control how findings are framed via persona modes.
-- **Instructor demos (folded into the lab steps):** while participants generate their reports, ask for "a docx report" in the Lab 2 engagement on the projector — download links appear in chat and files land in the reports folder (sidebar button); repeat as pptx and pdf. Then switch persona mode and re-ask the same question on `large-policy-document.txt` to contrast **general** (balanced consultant summary) vs **grc** (named control mappings, audit-evidence phrasing, gap/finding/observation distinction).
+- **Instructor demos (folded into the lab steps):** while participants generate their reports, ask for "a docx report" in the Lab 2 engagement on the projector — download links appear in chat and files land in the reports folder (sidebar button); repeat as pptx and pdf. Mention the `/report [docx|pptx|pdf]` slash command as the keyboard-only alternative. Then switch persona mode and re-ask the same question on `large-policy-document.txt` to contrast **general** (balanced consultant summary) vs **grc** (named control mappings, audit-evidence phrasing, gap/finding/observation distinction).
 - **Participants do:** Lab 3 (generate all three report formats from their Lab 2 engagement), then Lab 4 (general vs grc comparison; optional: try the **code** persona on `vulnerable-app.py`).
 - **Lab:** **Labs 3–4** (report generation; persona modes).
 
@@ -182,7 +182,7 @@ Lab 3: 10, Lab 4: 10, Lab 5: 10); the rest is instruction and demos.
 | `chroma/` | Vector index of your uploaded documents |
 | `uploads/` | Documents you attached to engagements |
 | `reports/` | Generated DOCX/PPTX/PDF reports |
-| `engagements.sqlite3` | All engagements, chats, and settings — closing the app never loses work |
+| `engagements.sqlite3` | All engagements, chats, and settings - closing the app never loses work. Chats are restored per engagement (newest 500 turns); **Clear chat** deletes an engagement's transcript |
 
 Mac/Linux data location: `~/.local/share/Fortis`.
 

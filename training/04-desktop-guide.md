@@ -32,7 +32,10 @@ present, CPU otherwise) → runs the offline self-test suite → opens Fortis.
    message; the model loads automatically.
 
 3. Click **+ New engagement** (sidebar) — documents, chats, and reports are
-   scoped to an engagement, so closing the app never loses work.
+   scoped to an engagement, so closing the app never loses work. Chat history
+   is stored per engagement (newest 500 turns) and restored automatically
+   when you reopen the app or switch back; the **Clear chat** button (top
+   bar) deletes the saved transcript for the active engagement.
 
 4. Attach files with **📎** (PDF, DOCX, PPTX, XLSX, CSV, configs, code),
    ask questions, then ask for "a docx report" — download links appear in
@@ -50,7 +53,8 @@ present, CPU otherwise) → runs the offline self-test suite → opens Fortis.
 | Data location | Docker volumes | `%APPDATA%\Fortis` (Win) / `~/.local/share/Fortis` (Mac/Linux) |
 
 Slash commands still work in the chat box: `/engagements`, `/new-engagement
-Client :: Name`, `/use <id>`, `/whoami`, `/close-engagement`.
+Client :: Name`, `/use <id>`, `/whoami`, `/close-engagement`,
+`/report [docx|pptx|pdf]`.
 
 ## For the instructor
 

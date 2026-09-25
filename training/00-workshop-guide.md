@@ -77,15 +77,17 @@ A system called **Fortis** — an AI cybersecurity consultant that:
 15. Engagement management (persistent client sessions)
 
 ### Module 5: Hands-On Labs (45 min)
-16. Lab 1: Upload and analyze a sample firewall config
-17. Lab 2: Generate a security report
-18. Lab 3: Extend the system with your own framework
+16. Lab 1: Verify setup & first chat
+17. Lab 2: Upload and analyze a sample firewall config
+18. Lab 3: Generate a consultant report (docx, pptx, pdf)
+19. Lab 4: Persona modes
+20. Lab 5: Structured output (tables and diagrams)
 
 ### Module 6: Advanced Topics (30 min)
-19. Map-reduce analysis for large documents
-20. Custom framework ingestion (loading official PDFs)
-21. Testing without a GPU (offline test suite)
-22. Deployment considerations and hardening
+21. Map-reduce analysis for large documents
+22. Custom framework ingestion (loading official PDFs)
+23. Testing without a GPU (offline test suite)
+24. Deployment considerations and hardening
 
 ---
 
@@ -156,7 +158,9 @@ desktop/  pywebview launcher (the "app window")
 Key design decisions:
 - **LLM runs in-process** — llama.cpp inside the Python app, no HTTP hop
 - **GPU offload auto-detected** — falls back to CPU on modest hardware
-- **Local data only** — ChromaDB, uploads, and SQLite store live in `data/`
+- **Local data only** — models, ChromaDB, uploads, reports, and the SQLite
+  store live under one data root: `%APPDATA%\Fortis` on Windows,
+  `~/.local/share/Fortis` elsewhere (override with `FORTIS_DATA_DIR`)
 
 ### Step-by-Step Setup
 
@@ -167,7 +171,8 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 # 2. Verify — the desktop window opens, or headless:
 python -m server.app --port 8757
 curl http://127.0.0.1:8757/health
-# Should return: {"status": "ok", "frameworks_loaded": ["NIST_CSF", ...]}
+# Without a model downloaded yet: {"status": "degraded", ...} (stub replies).
+# After a model is picked: {"status": "ok", "frameworks_loaded": ["NIST_CSF", ...]}
 ```
 
 ### Understanding the .env Configuration
@@ -406,10 +411,10 @@ class Finding(BaseModel):
     severity: str        # Critical | High | Medium | Low | Informational
     description: str
     evidence: str        # Quoted from source document
-    source_file: str     # Which uploaded file
-    framework: str       # NIST_CSF | OWASP_TOP10 | CIS_CONTROLS
-    control_id: str      # e.g., PR.AA, A01:2025, CIS-6
-    remediation: str     # Actionable fix
+    source_file: Optional[str]   # Which uploaded file, when known
+    framework: Optional[str]     # NIST_CSF | OWASP_TOP10 | CIS_CONTROLS | ...
+    control_id: Optional[str]    # e.g., PR.AA, A01:2025, CIS-6
+    remediation: str             # Actionable fix
 
 class SecurityReport(BaseModel):
     title: str
@@ -419,6 +424,7 @@ class SecurityReport(BaseModel):
     findings: List[Finding]
     overall_risk_rating: str
     recommendations_summary: List[str]
+    diagram: Optional[str]       # Mermaid source, when the model draws one
 ```
 
 **Important:** Reports are rendered by code, not by the LLM. The LLM produces the data; the Python renderers produce the document. This guarantees structurally valid output every time.
@@ -442,12 +448,15 @@ sidebar are rendered client-side; vendor libraries are bundled locally.
 The orchestration layer is the glue between the chat route and the RAG core:
 
 1. **Intercepts** the user message before it reaches the LLM
-2. **Routes** engagement commands (`/new-engagement`, `/use`, etc.)
+2. **Routes** engagement commands (`/new-engagement`, `/use`, `/report`, etc.)
 3. **Ingests** attached files into the RAG core
 4. **Enforces** the cybersecurity-only guardrail (rejects off-topic queries)
-5. **Detects** report generation intent ("generate a docx report")
-6. **Condenses** follow-up questions before retrieval
-7. **Calls** the core for chat or report generation
+5. **Detects** report generation intent ("generate a docx report") and renders
+   the file into the reports folder
+6. **Detects** structured-output requests (tables, Mermaid diagrams)
+7. **Condenses** follow-up questions before retrieval
+8. **Persists** both sides of every turn into the engagement's chat history
+9. **Calls** the core for chat or report generation
 
 ```python
 # Priority order in orchestration:
@@ -455,32 +464,36 @@ The orchestration layer is the glue between the chat route and the RAG core:
 # 2. Must have active engagement
 # 3. Ingest any attached files
 # 4. Cybersecurity topic guardrail
-# 5. Report generation detection
-# 6. Query condensation
-# 7. Normal RAG chat
+# 5. Report generation detection -> render into report_dir
+# 6. Structured output detection (tables / diagrams)
+# 7. Query condensation
+# 8. Persist the turn to the engagement's chat history
+# 9. Normal RAG chat
 ```
 
 ### 4.3 Engagement Management
 
 **Files:** `core/store.py`, `core/routers/engagements.py`
 
-Engagements provide persistent scoping — documents and context survive across chat sessions:
+Engagements provide persistent scoping — documents, chat history, and reports survive across chat sessions and app restarts:
 
 ```
 Client: "Acme Corp"
   └── Engagement: "Q3 2026 Config Review" (active)
         ├── Uploaded: firewall-config.txt, iam-policy.json
-        ├── Chat history: [relevant excerpts stored]
+        ├── Chat history: [every turn stored, newest 500 — restored on
+        │                  restart / engagement switch]
         └── Reports: [generated DOCX/PPTX/PDF]
   
   └── Engagement: "Annual Pentest Prep" (closed)
         └── ...
 ```
 
-**Storage:** SQLite database (`engagements.sqlite3`) with three tables:
+**Storage:** SQLite database (`engagements.sqlite3`) with four tables:
 - `clients` — organization name, slug-based ID
 - `engagements` — name, status, notes, linked to client
 - `active_engagement` — per-user pointer to current engagement
+- `chat_messages` — per-engagement chat transcript (newest 500 turns kept)
 
 **Chat commands** (typed as messages):
 | Command | Effect |
@@ -490,6 +503,7 @@ Client: "Acme Corp"
 | `/use <id>` | Switch active |
 | `/whoami` | Show current + files |
 | `/close-engagement` | Mark closed |
+| `/report [docx\|pptx\|pdf]` | Generate a report for the active engagement (defaults to docx) |
 
 ---
 
@@ -515,7 +529,7 @@ This replaces the paraphrased seed with verbatim text. Works for any framework n
 
 ```bash
 pip install -r requirements-dev.txt
-pytest tests/ -v
+pytest desktop/tests/ -v
 ```
 
 The test suite uses:

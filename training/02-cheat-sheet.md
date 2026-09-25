@@ -60,8 +60,12 @@ fortis/
 | GET | `/upload/engagement/{id}/files` | List files for engagement |
 | POST | `/chat` | RAG chat (synchronous) |
 | POST | `/chat/stream` | RAG chat (streaming) |
+| GET | `/chat/history/{engagement_id}` | Stored chat turns, oldest first (newest 500) |
+| DELETE | `/chat/history/{engagement_id}?confirm=true` | Clear an engagement's chat history |
 | POST | `/report/generate` | Generate DOCX/PPTX/PDF report |
 | GET | `/report/download/{filename}` | Download generated report |
+| PATCH | `/engagements/{id}/status` | Set engagement status (active/closed) |
+| DELETE | `/engagements/{id}` | Delete engagement + its docs/chat history |
 
 ## Environment Variables
 
@@ -81,8 +85,11 @@ fortis/
 | `MAP_BATCH_TOKENS` | `2800` | Max tokens per map batch |
 | `RERANK_BACKEND` | `sentence-transformers` | `none` disables reranking |
 | `BM25_RRF_K` | `60` | Reciprocal rank fusion constant |
-| `CHROMA_PERSIST_DIR` | `data/chroma` | ChromaDB data directory |
-| `DB_PATH` | `data/engagements.sqlite3` | SQLite database path |
+| `CHROMA_PERSIST_DIR` | `%APPDATA%\Fortis\chroma` | ChromaDB data directory |
+| `DB_PATH` | `%APPDATA%\Fortis\engagements.sqlite3` | SQLite database (engagements + chat history) |
+
+Data root: `%APPDATA%\Fortis` on Windows, `~/.local/share/Fortis` on
+macOS/Linux — override both with `FORTIS_DATA_DIR`.
 
 ## Python Import Chain
 
@@ -90,10 +97,22 @@ fortis/
 server/app.py
   ├── server/orchestration.py → core/rag.py → core/vectorstore.py + core/bm25.py
   ├── routers/upload.py → core/ingestion.py → core/vectorstore.py → core/embeddings.py
+  ├── routers/chat.py → core/report_intent.py + routers/report.py + core/store.py
   ├── routers/report.py → core/analysis.py → core/vectorstore.py + core/reports/
   ├── routers/engagements.py → core/store.py (SQLite)
   └── core/frameworks/__init__.py → vectorstore.seed_framework_chunks()
 ```
+
+## Slash Commands
+
+| Command | Effect |
+|---------|--------|
+| `/new-engagement Client :: Name` | Create and activate an engagement |
+| `/engagements` | List all engagements |
+| `/use <id>` | Switch the active engagement |
+| `/whoami` | Show current engagement + files |
+| `/close-engagement` | Mark the active engagement closed |
+| `/report [docx\|pptx\|pdf]` | Generate a report for the active engagement (defaults to docx) |
 
 ## Severity Scale
 
@@ -116,6 +135,7 @@ SecurityReport:
   findings: List[Finding]
   overall_risk_rating: str
   recommendations_summary: List[str]
+  diagram: Optional[str]       # Mermaid source, when present
 
 Finding:
   title: str
