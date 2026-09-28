@@ -2,21 +2,37 @@
 
 
 
-# AI Cybersecurity Advisor — Desktop (Fortis)
+# Fortis
+## Private AI Cybersecurity Advisor
 
-**Current version: 0.4.1** — see [CHANGELOG.md](CHANGELOG.md) for the full
-development history (initial release → tiered RAG → setup hardening →
-hardware-aware inference → chat reports + chat history → crash fix).
-Stable releases are tagged `v0.1.0` … `v0.4.1`.
+Fortis is a fully local AI cybersecurity advisory desktop application for
+security assessments, document reviews, configuration analysis, and consulting
+workflows.
 
-A fully local cybersecurity advisory **desktop app**. Upload any document
-(policy, config, code, log, architecture doc) and get a structured security
-analysis grounded in NIST CSF / OWASP Top 10 / CIS Controls, downloadable as
-DOCX, PPTX, or PDF.
+Upload policies, configurations, source code, logs, architecture documents,
+or other security evidence and interact with a locally running AI advisor
+grounded in frameworks such as NIST CSF, OWASP Top 10, and CIS Controls.
 
-No Docker. No cloud APIs. One script, one window. All data stays on the
-machine (`%APPDATA%\Fortis` on Windows, `~/.local/share/Fortis` elsewhere) —
-models, vector store, uploads, reports, engagement store, and chat history.
+Fortis combines local LLM inference, retrieval-augmented generation, persistent
+engagements, and structured reporting to turn security evidence into actionable
+findings and consultant-style deliverables.
+
+### What Fortis provides
+
+- Fully local LLM inference using llama.cpp and GGUF models
+- Hardware-aware model selection and GPU offloading
+- Retrieval-Augmented Generation with Basic, Standard, and Full modes
+- Persistent client and assessment engagements
+- Document-grounded cybersecurity conversations
+- Security analysis mapped to recognized frameworks
+- Persistent chat history per engagement
+- DOCX, PPTX, and PDF report generation
+- Local vector storage and evidence management
+- Windows, Linux, and macOS support
+- No cloud AI APIs or telemetry
+
+**Your documents, models, conversations, vector database, and reports remain
+on your machine.**
 
 ## Quick start
 
