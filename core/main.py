@@ -11,7 +11,7 @@ from .routers import upload, chat, report, engagements
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Fortis — AI Cybersecurity Advisor", version="1.0.0")
+app = FastAPI(title="Fortis — AI Cybersecurity Advisor", version="0.4.1")
 
 app.add_middleware(
     CORSMiddleware,

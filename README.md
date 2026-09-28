@@ -4,6 +4,11 @@
 
 # AI Cybersecurity Advisor — Desktop (Fortis)
 
+**Current version: 0.4.1** — see [CHANGELOG.md](CHANGELOG.md) for the full
+development history (initial release → tiered RAG → setup hardening →
+hardware-aware inference → chat reports + chat history → crash fix).
+Stable releases are tagged `v0.1.0` … `v0.4.1`.
+
 A fully local cybersecurity advisory **desktop app**. Upload any document
 (policy, config, code, log, architecture doc) and get a structured security
 analysis grounded in NIST CSF / OWASP Top 10 / CIS Controls, downloadable as
@@ -109,6 +114,18 @@ python -m server.app --port 8757     # same UI at http://127.0.0.1:8757
 Privacy: everything — models, documents, chat history, reports — stays in
 `%APPDATA%\Fortis` (or `~/.local/share/Fortis`). Nothing is sent anywhere;
 there are no telemetry or cloud calls.
+
+## Version history
+
+| Version | Date | Highlights |
+|---|---|---|
+| 0.4.1 | 2026-09-25 | Fix `UnboundLocalError` crash on every llama-backend chat call |
+| 0.4.0 | 2026-09-25 | Reports export from chat; chat history persists per engagement; `/report` command; Clear chat |
+| 0.3.0 | 2026-09-24 | Hardware-aware GPU offload; report progress bar; placeholder-report gate; input hardening |
+| 0.2.0 | 2026-09-22/23 | Fresh-clone setup hardening, llama.cpp install fallbacks |
+| 0.1.0 | 2026-09-21 | Initial release: RAG core, engagement store, report renderers, tiered RAG |
+
+Details in [CHANGELOG.md](CHANGELOG.md).
 
 ## Repo layout
 
