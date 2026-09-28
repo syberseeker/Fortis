@@ -41,14 +41,18 @@ body {
 .eng-item:hover { background: var(--bg3); }
 .eng-item.active { background: var(--bg3); border-color: var(--accent2); }
 .eng-item:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
-.eng-item .del-btn {
-  position: absolute; top: 6px; right: 6px; width: 24px; height: 24px;
+.eng-item .del-btn, .eng-item .exp-btn {
+  position: absolute; top: 6px; width: 24px; height: 24px;
   border-radius: 6px; border: 1px solid var(--border); background: var(--bg3);
   color: var(--muted); font-size: 14px; line-height: 1; display: flex;
   align-items: center; justify-content: center; cursor: pointer; opacity: .55;
 }
-.eng-item:hover .del-btn, .eng-item:focus-within .del-btn, .eng-item .del-btn:focus { opacity: 1; }
+.eng-item .del-btn { right: 6px; }
+.eng-item .exp-btn { right: 34px; font-size: 12px; }
+.eng-item:hover .del-btn, .eng-item:focus-within .del-btn, .eng-item .del-btn:focus,
+.eng-item:hover .exp-btn, .eng-item:focus-within .exp-btn, .eng-item .exp-btn:focus { opacity: 1; }
 .eng-item .del-btn:hover { background: rgba(248,113,113,.08); border-color: var(--err); color: var(--err); }
+.eng-item .exp-btn:hover { background: rgba(91,143,196,.08); border-color: var(--accent2); color: var(--accent2); }
 .eng-item .name { font-weight: 600; font-size: 14px; padding-right: 30px; }
 .eng-item .client { color: var(--muted); font-size: 12px; padding-right: 30px; }
 .eng-item .meta { color: var(--muted); font-size: 12px; margin-top: 4px; display: flex; gap: 8px; }
@@ -482,12 +486,22 @@ function renderEngagements() {
     div.innerHTML = `
       <div class="client">${esc(e.client_name)}</div>
       <div class="name">${esc(e.name)}</div>
-      <div class="meta"><span class="badge ${e.status}">${e.status}</span></div>
-      <button class="del-btn" aria-label="Delete engagement"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`;
+    <div class="meta"><span class="badge ${e.status}">${e.status}</span></div>
+    <button class="exp-btn" aria-label="Export engagement" title="Export engagement (zip)">⬇</button>
+    <button class="del-btn" aria-label="Delete engagement"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`;
     div.onclick = () => activateEngagement(e.id);
     div.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); activateEngagement(e.id); } };
     const delBtn = div.querySelector('.del-btn');
     delBtn.onclick = (ev) => { ev.stopPropagation(); confirmDeleteEngagement(e); };
+    const expBtn = div.querySelector('.exp-btn');
+    expBtn.onclick = (ev) => {
+      ev.stopPropagation();
+      fetch('/api/open-external', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: location.origin + '/engagements/' + encodeURIComponent(e.id) + '/export' }),
+      }).then(() => status('Export opened in your browser — the zip downloads there.'))
+        .catch(() => location.href = '/engagements/' + encodeURIComponent(e.id) + '/export');
+    };
     box.appendChild(div);
   }
 }

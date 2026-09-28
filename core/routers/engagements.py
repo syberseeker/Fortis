@@ -1,7 +1,9 @@
 import os
+import json
 from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from .. import store, vectorstore
@@ -77,6 +79,56 @@ async def delete_engagement(engagement_id: str):
     vectorstore.clear_engagement(engagement_id)
     store.delete_engagement(engagement_id)
     return {"engagement_id": engagement_id, "status": "deleted"}
+
+
+@router.get("/{engagement_id}/export")
+async def export_engagement(engagement_id: str):
+    """Bundles the engagement's metadata, chat transcript, indexed document
+    list, and generated report files (matched by filename slug prefix) into a
+    downloadable zip archive."""
+    import io
+    import zipfile
+    from datetime import datetime
+
+    engagement = store.get_engagement(engagement_id)
+    if not engagement:
+        raise HTTPException(404, "Engagement not found.")
+
+    try:
+        turns = store.get_chat_history(engagement_id)
+    except (KeyError, ValueError):
+        turns = []
+    documents = vectorstore.list_engagement_files(engagement_id)
+
+    slug = engagement_id.lower()
+    report_names = []
+    if os.path.isdir(settings.report_dir):
+        report_names = sorted(
+            f for f in os.listdir(settings.report_dir)
+            if f.lower().startswith(slug) and os.path.isfile(os.path.join(settings.report_dir, f))
+        )
+
+    bundle = {
+        "fortis_export_version": 1,
+        "exported_at": datetime.utcnow().isoformat(),
+        "engagement": engagement,
+        "documents": documents,
+        "chat_turns": turns,
+        "report_files": report_names,
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("engagement.json", json.dumps(bundle, indent=2, ensure_ascii=False))
+        for name in report_names:
+            zf.write(os.path.join(settings.report_dir, name), f"reports/{name}")
+
+    stamp = datetime.now().strftime("%Y%m%d")
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{slug}-export-{stamp}.zip"'},
+    )
 
 
 # ---- Active engagement per user --------------------------------------------

@@ -20,6 +20,12 @@ _user_docs = _client.get_or_create_collection(USER_DOCS_COLLECTION)
 _frameworks = _client.get_or_create_collection(FRAMEWORKS_COLLECTION)
 
 
+def framework_collection():
+    """Public accessor for the seeded framework corpus (metadata carries
+    framework + control_id); used by mapping validation in report_service."""
+    return _frameworks
+
+
 def add_user_document_chunks(
     engagement_id: str,
     filename: str,

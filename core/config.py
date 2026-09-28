@@ -1,5 +1,8 @@
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 _ALLOWED_ENV_KEYS = frozenset(
     {
@@ -20,8 +23,10 @@ def _is_allowed_env_key(key: str) -> bool:
 def _load_env_file() -> None:
     """Minimal .env loader so documented env overrides actually take effect;
     real environment variables always win. Only simple KEY=VALUE lines are
-    parsed; existing values are never replaced."""
+    parsed; existing values are never replaced. Keys that would be ignored
+    are logged once so typos and legacy settings do not vanish silently."""
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    ignored = []
     try:
         with open(path, "r", encoding="utf-8") as fh:
             for line in fh:
@@ -30,10 +35,18 @@ def _load_env_file() -> None:
                     continue
                 key, _, value = line.partition("=")
                 key, value = key.strip(), value.strip().strip('"').strip("'")
-                if key and key not in os.environ and _is_allowed_env_key(key):
-                    os.environ.setdefault(key, value)
+                if key and key not in os.environ:
+                    if _is_allowed_env_key(key):
+                        os.environ.setdefault(key, value)
+                    else:
+                        ignored.append(key)
     except (OSError, UnicodeDecodeError, ValueError):
-        pass
+        return
+    if ignored:
+        logger.warning(
+            "Ignoring unsupported .env keys (typo or legacy setting?): %s",
+            ", ".join(sorted(ignored)),
+        )
 
 
 _load_env_file()
@@ -109,6 +122,10 @@ class Settings:
     # final pass (reduce). Below this, a flat pass is faster and simpler.
     hierarchical_threshold_tokens: int = _env_int("HIERARCHICAL_THRESHOLD_TOKENS", "5000")
     map_batch_tokens: int = _env_int("MAP_BATCH_TOKENS", "2800")
+
+    # Per-call cap for analysis LLM requests. A hung local model must fail
+    # the report (progress marked failed) instead of spinning forever.
+    llm_call_timeout_seconds: int = _env_int("LLM_CALL_TIMEOUT_SECONDS", "600")
 
     # ---- RAG upgrade ----
     # Tiers: "basic" = dense-only retrieval (original behavior);

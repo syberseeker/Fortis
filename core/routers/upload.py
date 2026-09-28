@@ -6,7 +6,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
 from ..config import settings
 from ..ingestion import extract_text, chunk_text_enriched
-from .. import vectorstore, store
+from .. import vectorstore, store, report_service
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -61,6 +61,7 @@ async def upload_file(
     display_name = _safe_disk_filename(_clean_filename(file.filename)) or file.filename
     chunks = chunk_text_enriched(text, display_name)
     n_added = vectorstore.add_user_document_chunks(engagement_id, display_name, chunks)
+    report_service.invalidate_engagement_cache(engagement_id)
 
     return {
         "filename": display_name,
@@ -80,4 +81,5 @@ async def clear_engagement_documents(engagement_id: str):
     """Clears uploaded documents/vectors for an engagement without deleting the
     engagement record itself (client history, past reports stay intact)."""
     vectorstore.clear_engagement(engagement_id)
+    report_service.invalidate_engagement_cache(engagement_id)
     return {"engagement_id": engagement_id, "status": "documents_cleared"}

@@ -9,6 +9,9 @@ Fortis is a fully local AI cybersecurity advisory desktop application for
 security assessments, document reviews, configuration analysis, and consulting
 workflows.
 
+**Current version: 0.5.0** — see [CHANGELOG.md](CHANGELOG.md) for the full
+development history. Stable releases are tagged `v0.1.0` … `v0.5.0`.
+
 Upload policies, configurations, source code, logs, architecture documents,
 or other security evidence and interact with a locally running AI advisor
 grounded in frameworks such as NIST CSF, OWASP Top 10, and CIS Controls.
@@ -135,6 +138,7 @@ there are no telemetry or cloud calls.
 
 | Version | Date | Highlights |
 |---|---|---|
+| 0.5.0 | 2026-09-25 | Analyze once / render N formats; framework-mapping validation; engagement export; CORS removed; CI |
 | 0.4.1 | 2026-09-25 | Fix `UnboundLocalError` crash on every llama-backend chat call |
 | 0.4.0 | 2026-09-25 | Reports export from chat; chat history persists per engagement; `/report` command; Clear chat |
 | 0.3.0 | 2026-09-24 | Hardware-aware GPU offload; report progress bar; placeholder-report gate; input hardening |

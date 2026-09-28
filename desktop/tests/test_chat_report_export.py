@@ -170,7 +170,7 @@ def test_stream_summary_question_is_chat_not_report(client, monkeypatch):
         calls.append(1)
         return "This is a stub conversational reply from Fortis."
 
-    monkeypatch.setattr(chat_router, "generate_report_result", boom)
+    monkeypatch.setattr("core.report_service.generate_report_result", boom)
     resp = client.post(
         "/chat/stream",
         json={"engagement_id": eng["id"], "message": "make a summary of this document"},
@@ -262,7 +262,7 @@ def test_invalid_report_format_via_chat_returns_400(client):
     _upload(client, eng["id"], "password=hunter2\n")
     # detector never selects an unsupported format, but the shared builder
     # must still reject one if a caller passes it directly
-    from core.routers.report import generate_report_result
+    from core.report_service import generate_report_result
 
     result = __import__("asyncio").run(
         generate_report_result(eng["id"], "xlsx", "")

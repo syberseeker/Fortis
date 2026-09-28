@@ -83,6 +83,12 @@ def _cuda(monkeypatch, value):
     monkeypatch.setattr("engine.hardware.can_use_cuda", lambda: value)
 
 
+def _torch(monkeypatch, value):
+    """Controls the torch-CUDA probe; by default tests fake a CUDA-capable
+    torch so the historical can_use_cuda-only scenarios still hold."""
+    monkeypatch.setattr(embeddings, "_torch_cuda_ok", lambda: value)
+
+
 def _ctor_recording(recorder, make):
     def ctor(model_name, device):
         recorder.append(device)
@@ -94,6 +100,7 @@ def _ctor_recording(recorder, make):
 def test_embedding_cuda_selected_when_available(fake_st, monkeypatch):
     _enable_real_backend(monkeypatch)
     _cuda(monkeypatch, True)
+    _torch(monkeypatch, True)
     devices = []
     fake_st.SentenceTransformer = _ctor_recording(
         devices, lambda device: _StubModel("cpu")
@@ -105,11 +112,29 @@ def test_embedding_cuda_selected_when_available(fake_st, monkeypatch):
     assert devices == ["cuda"]
 
 
+def test_embedding_gpu_without_cuda_torch_stays_cpu(fake_st, monkeypatch):
+    """NVIDIA GPU present but the torch wheel is CPU-only: pick cpu up front
+    instead of attempting a cuda load that fails with a confusing error."""
+    _enable_real_backend(monkeypatch)
+    _cuda(monkeypatch, True)
+    _torch(monkeypatch, False)
+    devices = []
+    fake_st.SentenceTransformer = _ctor_recording(
+        devices, lambda device: _StubModel(device)
+    )
+
+    embeddings.embed_texts(["hello"])
+
+    assert devices == ["cpu"]
+    assert embeddings._resolved_device == "cpu"
+
+
 def test_embedding_cuda_encode_failure_falls_back_to_cpu_and_remembers(
     fake_st, monkeypatch
 ):
     _enable_real_backend(monkeypatch)
     _cuda(monkeypatch, True)
+    _torch(monkeypatch, True)
     devices = []
     fake_st.SentenceTransformer = _ctor_recording(
         devices, lambda device: _StubModel(device)

@@ -1,93 +1,53 @@
 """
-Single-user orchestration layer for the desktop app.
-
-Ports the Open WebUI pipeline's per-message behavior (engagement slash
-commands, file ingestion, cybersecurity guardrail, report-intent detection,
-refusal retry) to direct function calls into core — deliberately NOT over
-HTTP, since self-requests from inside async endpoints deadlock the event
-loop.
+Desktop orchestration layer: engagement slash commands, per-user helpers,
+and file ingestion — thin wrappers over core, deliberately NOT going over
+HTTP. The per-message chat pipeline (guardrail, report intent, structured
+output, persistence) lives in core.routers.chat, which serves both the UI
+and any API client.
 """
 import os
 import re
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-from core import store, vectorstore, rag
-from core.config import settings
+from core import store, vectorstore
 from core.ingestion import extract_text, chunk_text_enriched
-from core.report_intent import (
-    detect_report_request,
-    format_report_reply,
-    is_stub_backend,
-    stub_gate_message,
-)
-from core.routers.chat import run_structured_turn
-from core.routers.report import generate_report_result
-from core.structured import detect_structured_output_request
-import engine
+from core.report_intent import format_report_reply
+from core.report_service import generate_report_result
 
 _LOCAL_USER = "local"
 
-_CYBERSECURITY_KEYWORDS = [
-    r"\b(security|cyber(?:security)?|infosec|application\s*security|appsec)\b",
-    r"\b(vulnerab(?:ility|le)|exploit|att(?:ack|&?ck)|threat|malware|ransomware|phishing)\b",
-    r"\b(risk|compliance|audit|governance|policy|incident|breach|compromise)\b",
-    r"\b(nist|owasp|mitre|cis\s*controls?|iso\s*27001|soc\s*2|pci[\s-]*dss|gdpr|hipaa)\b",
-    r"\b(firewall|ids|ips|siem|soc|encryption|authentication|authorization)\b",
-    r"\b(access\s*control|iam|identity|privilege|zero\s*trust|vpn|tls|ssl)\b",
-    r"\b(patch|hardening|configuration|misconfiguration|baseline)\b",
-    r"\b(log|monitoring|detect|respond|recover|protect|identify)\b",
-    r"\b(sql|sqli|injection|xss|csrf|ssrf|deserializ|payload|webshell|privilege\s*escap)\b",
-    r"\b(iv|traversal|directory\s*traversal|code\s*injection|command\s*injection)\b",
-    r"\b(reverse\s*shell|shell|buffer\s*overflow|malicious|trojan|rootkit|botnet)\b",
-    r"\b(report|finding|remediat|recommendation|executive\s*summary|risk\s*rating)\b",
-    r"\b(upload|document|config|code\s*review|architecture|network\s*diagram)\b",
-]
-
-_OFF_TOPIC_RESPONSE = (
-    "I'm Fortis, a cybersecurity advisory assistant. I can only help with "
-    "security-related topics such as:\n\n"
-    "- Document, configuration, and code security reviews\n"
-    "- Framework mapping (NIST CSF, OWASP Top 10, CIS Controls)\n"
-    "- Risk assessment and remediation advice\n"
-    "- Security report generation\n\n"
-    "Please ask a cybersecurity question or upload a document for review."
-)
-
-_REFUSAL_MARKERS = (
-    "i can only help with security-related topics",
-    "please ask a cybersecurity question",
-)
-
-def _is_stub_backend() -> bool:
-    return is_stub_backend()
-
-
-def core_gate_message() -> str:
-    return stub_gate_message()
+_RUN_EXECUTOR = None
 
 
 def _run_async(coro):
     """Runs an async core function from sync code. When already inside an
-    event loop (FastAPI endpoint), runs it on a worker thread instead of
-    failing with 'asyncio.run() cannot be called from a running event loop'."""
+    event loop (FastAPI endpoint), runs it on a shared worker thread instead
+    of failing with 'asyncio.run() cannot be called from a running event
+    loop'. One executor is reused for the process lifetime."""
     import asyncio
+    global _RUN_EXECUTOR
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
     import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        return ex.submit(asyncio.run, coro).result()
+    if _RUN_EXECUTOR is None:
+        _RUN_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="fortis-orch"
+        )
+    return _RUN_EXECUTOR.submit(asyncio.run, coro).result()
 
 
-def is_cybersecurity_related(text: str) -> bool:
-    lower = text.lower()
-    return any(re.search(p, lower) for p in _CYBERSECURITY_KEYWORDS)
+def _is_stub_backend() -> bool:
+    from core.report_intent import is_stub_backend
+
+    return is_stub_backend()
 
 
-def is_offtopic_refusal(reply: str) -> bool:
-    lowered = reply.lower()
-    return any(m in lowered for m in _REFUSAL_MARKERS)
+def core_gate_message() -> str:
+    from core.report_intent import stub_gate_message
+
+    return stub_gate_message()
 
 
 class Orchestrator:
@@ -178,7 +138,6 @@ class Orchestrator:
         client = store.get_engagement(eng["id"])["client_name"]
         return f"Created and activated **{client} — {eng['name']}** (`{eng['id']}`)."
 
-
     def _whoami(self) -> str:
         eng = self.active_engagement()
         if not eng:
@@ -214,73 +173,7 @@ class Orchestrator:
         n = vectorstore.add_user_document_chunks(engagement_id, filename, chunks)
         return f"Indexed **{filename}** ({n} chunks)."
 
-    # ---- the main turn --------------------------------------------------------
-
-    def chat_turn(
-        self,
-        user_text: str,
-        history: List[Dict[str, str]] = None,
-        attachment_paths: List[str] = None,
-        role: Optional[str] = None,
-    ) -> Dict:
-        command = self.handle_command(user_text)
-        if command is not None:
-            return {"kind": "command", "text": command}
-
-        engagement = self.active_engagement()
-        if not engagement:
-            return {
-                "kind": "no_engagement",
-                "text": "No active engagement. Create one with `/new-engagement Client :: Name` "
-                        "or the **+ New engagement** button in the sidebar.",
-            }
-
-        engagement_id = engagement["id"]
-        notes = [self.ingest_file(p, engagement_id) for p in attachment_paths or []]
-        upload_note = "\n".join(n for n in notes if n)
-
-        if not upload_note and not is_cybersecurity_related(user_text):
-            return {"kind": "offtopic", "text": _OFF_TOPIC_RESPONSE}
-
-        fmt = detect_report_request(user_text)
-        if fmt:
-            return {"kind": "report", "text": self.generate_report(engagement_id, fmt, user_text)}
-
-        intent = detect_structured_output_request(user_text)
-        if intent:
-            effective_role = role if role in rag.ROLE_PRESETS else None
-            reply = _run_async(run_structured_turn(engagement_id, user_text, history or [], intent, effective_role))
-            return {"kind": "chat", "text": reply, "upload_note": upload_note}
-
-        reply = self._chat(engagement_id, user_text, history or [], role)
-        if is_offtopic_refusal(reply) and is_cybersecurity_related(user_text):
-            forced = (
-                "This is a cybersecurity topic. Answer the user's question directly "
-                "and completely. Do not refuse. Original request: " + user_text
-            )
-            reply = self._chat(engagement_id, forced, history or [], role)
-        return {"kind": "chat", "text": reply, "upload_note": upload_note}
-
-    def _chat(self, engagement_id: str, message: str, history: List[Dict[str, str]], role: Optional[str] = None) -> str:
-        return _run_async(self._achat(engagement_id, message, history, role))
-
-    async def _achat(self, engagement_id: str, message: str, history: List[Dict[str, str]], role: Optional[str] = None) -> str:
-        from core.condense import condense_query
-        from core.config import settings as core_settings
-        retrieval_query = await condense_query(history, message, core_settings.rag_level)
-        effective_role = role if role in rag.ROLE_PRESETS else None
-        messages = rag.build_chat_messages(
-            engagement_id, message, history, role=effective_role, retrieval_query=retrieval_query
-        )
-        return await engine.chat(messages)
-
     # ---- reports ----------------------------------------------------------------
-
-    def generate_report(self, engagement_id: str, fmt: str, focus_text: str = "") -> str:
-        result = _run_async(generate_report_result(engagement_id, fmt, focus_text))
-        if "error" in result:
-            return f"Report generation failed: {result['error']}"
-        return format_report_reply(result, _is_stub_backend())
 
     async def _agenerate_report_download(
         self,

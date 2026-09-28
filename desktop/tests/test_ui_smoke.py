@@ -94,3 +94,23 @@ def test_no_unsafe_model_output_insertion(index_html):
         assert "renderMd(" in after or "esc(" in after, \
             "assistant bubble innerHTML must come from renderMd/esc (sanitized markdown)"
     assert "esc(raw)" in script, "mermaid fallback must escape the raw source"
+
+
+def test_report_intent_regex_matches_server_detector(index_html):
+    """The UI's client-side report-intent heuristic must stay in lockstep with
+    core/report_intent.py so the progress bar and the server agree on when a
+    report is being generated."""
+    script = _script_body(index_html)
+    m = re.search(r"const\s+action\s*=\s*/([^/]+)/;", script)
+    assert m, "UI action regex not found"
+    js_action = m.group(1)
+    m2 = re.search(r"const\s+deliverable\s*=\s*/([^/]+)/;", script)
+    assert m2, "UI deliverable regex not found"
+    js_deliverable = m2.group(1)
+
+    import core.report_intent as ri
+    py_action = ri._REPORT_ACTION_RE.pattern
+    py_deliverable = ri._REPORT_DELIVERABLE_RE.pattern
+
+    assert js_action == py_action.strip(), (js_action, py_action)
+    assert js_deliverable == py_deliverable.strip(), (js_deliverable, py_deliverable)

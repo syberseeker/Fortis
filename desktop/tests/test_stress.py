@@ -240,7 +240,7 @@ def test_thirty_chat_turns_across_engagements_keep_scoping(client):
         for eng in (eng_a, eng_b):
             resp = client.post(
                 "/chat",
-                json={"engagement_id": eng["id"], "message": f"turn {i} for {eng['id']}"},
+                json={"engagement_id": eng["id"], "message": f"turn {i} for {eng['id']}: any firewall risks?"},
             )
             assert resp.status_code == 200
             assert resp.json()["reply"] == "This is a stub conversational reply from Fortis."
@@ -266,11 +266,22 @@ ADVERSARIAL_MESSAGES = [
 @pytest.mark.parametrize("message", ADVERSARIAL_MESSAGES)
 def test_adversarial_chat_input_does_not_500(client, message):
     """Emoji, CJK, RTL, control chars, BOM/zero-width, and very long single-line
-    messages must all get a normal 200 reply, never a 500."""
+    messages must all get a normal 200 reply, never a 500. Off-topic payloads
+    get the guardrail refusal; on-topic ones get the LLM stub reply."""
     eng = _make_engagement(client, "Adversarial Co", "Unicode Test")
     resp = client.post("/chat", json={"engagement_id": eng["id"], "message": message})
     assert resp.status_code == 200
-    assert resp.json()["reply"] == "This is a stub conversational reply from Fortis."
+    reply = resp.json()["reply"]
+    assert reply in (
+        "This is a stub conversational reply from Fortis.",
+        "I'm Fortis, a cybersecurity advisory assistant. I can only help with "
+        "security-related topics such as:\n\n"
+        "- Document, configuration, and code security reviews\n"
+        "- Framework mapping (NIST CSF, OWASP Top 10, CIS Controls)\n"
+        "- Risk assessment and remediation advice\n"
+        "- Security report generation\n\n"
+        "Please ask a cybersecurity question or upload a document for review.",
+    ), reply[:120]
 
 
 def test_json_escaped_lone_surrogate_message_does_not_500(client):
@@ -282,7 +293,7 @@ def test_json_escaped_lone_surrogate_message_does_not_500(client):
     body = body.replace(b'"message": "PLACEHOLDER"', b'"message": "lone \\ud800 surrogate"')
     resp = client.post("/chat", content=body, headers={"content-type": "application/json"})
     assert resp.status_code == 200
-    assert resp.json()["reply"] == "This is a stub conversational reply from Fortis."
+    assert resp.json()["reply"]  # any 200 reply is fine; content varies by scope
 
 
 def test_json_escaped_lone_surrogate_in_engagement_creation(client):

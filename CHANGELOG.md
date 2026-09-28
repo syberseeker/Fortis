@@ -1,9 +1,57 @@
 # Changelog
 
 All notable changes to Fortis, traced from the initial commit (2026-09-21)
-to the current build. Version numbers are retroactive labels for the dated
-commit clusters; no git tags are cut yet. Format loosely follows
+to the current build. Each version below is tagged in git (`v0.1.0` …
+`v0.5.0`) at the commit that marks its release. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
+
+## [0.5.0] — 2026-09-25
+
+### Added
+- **Analyze once, render N formats.** Report analysis results are cached
+  per (engagement, focus) in SQLite, so generating DOCX, PPTX, and PDF for
+  the same engagement and focus reuses one LLM analysis instead of three
+  full pipeline runs — dramatically faster on CPU, and the three formats
+  now contain literally identical findings.
+- **Framework-mapping validation.** After analysis, every finding's
+  `framework` + `control_id` is checked against the seeded corpus;
+  unverifiable mappings are flagged "(unverified)" in all renderers instead
+  of presenting a confident control citation the corpus cannot back up.
+- **Engagement export.** `GET /engagements/{id}/export` bundles the
+  engagement's metadata, chat transcript, and generated reports into a zip
+  archive for backup or transfer; the UI gains an "Export engagement"
+  button in the sidebar.
+- **Offline-first mode surfaced in the UI.** The Model dialog exposes the
+  existing `EMBEDDING_BACKEND=hash-stub` path as "Offline mode" so
+  air-gapped installs can run the full pipeline without Hugging Face.
+
+### Fixed
+- **Local drive-by API exposure removed.** The wildcard CORS middleware
+  (which let any website open in a browser on the same machine read
+  engagement data from `127.0.0.1:8757`) is gone; the UI is same-origin
+  and needs no CORS.
+- Report requests no longer leak their own phrasing into focus
+  instructions: "generate a pdf report focusing on access control" now
+  focuses on "focusing on access control".
+- LLM analysis calls time out and mark progress as failed instead of
+  spinning forever; the executor thread is reused across report runs.
+
+### Changed
+- `/health` now reports the app `version`; a release-consistency test
+  keeps `APP_VERSION`, the changelog, the README, and the git tag from
+  drifting apart.
+- SQLite runs in WAL mode with a busy timeout — chat persistence no
+  longer contends with concurrent reads.
+- Unrecognized `.env` keys are logged at startup instead of vanishing;
+  legacy `OLLAMA_*` keys removed from `.env`/`.env.example`.
+- Embeddings pick CUDA only when the installed torch actually supports it
+  (no more failed-load tracebacks on CPU-only torch wheels with NVIDIA
+  GPUs).
+- CI: GitHub Actions runs the offline suite on every push; a release
+  workflow drafts GitHub Releases from the changelog section matching
+  each pushed tag.
+- The dead orchestrator chat path is removed; the HTTP chat pipeline now
+  enforces the cybersecurity topic guardrail directly.
 
 ## [0.4.1] — 2026-09-25
 

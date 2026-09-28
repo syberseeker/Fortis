@@ -99,13 +99,13 @@ def test_stream_turn_is_persisted(client):
 def test_history_is_scoped_per_engagement(client):
     a = _make_engagement(client, "Hist Co", "Eng A")
     b = _make_engagement(client, "Hist Co", "Eng B")
-    _chat(client, a["id"], "question for A")
-    _chat(client, b["id"], "question for B")
+    _chat(client, a["id"], "risk question for A")
+    _chat(client, b["id"], "risk question for B")
 
     ha = client.get(f"/chat/history/{a['id']}").json()["turns"]
     hb = client.get(f"/chat/history/{b['id']}").json()["turns"]
-    assert [t["content"] for t in ha if t["role"] == "user"] == ["question for A"]
-    assert [t["content"] for t in hb if t["role"] == "user"] == ["question for B"]
+    assert [t["content"] for t in ha if t["role"] == "user"] == ["risk question for A"]
+    assert [t["content"] for t in hb if t["role"] == "user"] == ["risk question for B"]
 
 
 def test_report_turns_are_persisted_too(client):
@@ -135,31 +135,31 @@ def test_history_capped_at_newest_messages(client, monkeypatch):
     eng = _make_engagement(client, "Hist Co", "Cap")
     monkeypatch.setattr(store, "CHAT_HISTORY_CAP", 4)
     for i in range(6):
-        assert _chat(client, eng["id"], f"turn {i}").status_code == 200
+        assert _chat(client, eng["id"], f"security turn {i}: any risks?").status_code == 200
 
     turns = client.get(f"/chat/history/{eng['id']}").json()["turns"]
     assert len(turns) == 4
-    assert turns[0]["content"] == "turn 4"  # oldest surviving user message
+    assert turns[0]["content"] == "security turn 4: any risks?"  # oldest surviving user message
     assert turns[-1]["role"] == "assistant"
 
 
 def test_history_limit_param(client):
     eng = _make_engagement(client, "Hist Co", "Limit Param")
     for i in range(3):
-        _chat(client, eng["id"], f"turn {i}")
+        _chat(client, eng["id"], f"security turn {i}: any risks?")
     turns = client.get(f"/chat/history/{eng['id']}?limit=2").json()["turns"]
     assert [t["content"] for t in turns] == [
-        "turn 2",
+        "security turn 2: any risks?",
         "This is a stub conversational reply from Fortis.",
     ]
 
 
 def test_history_order_is_oldest_first(client):
     eng = _make_engagement(client, "Hist Co", "Order")
-    _chat(client, eng["id"], "first")
-    _chat(client, eng["id"], "second")
+    _chat(client, eng["id"], "first security question")
+    _chat(client, eng["id"], "second security question")
     turns = client.get(f"/chat/history/{eng['id']}").json()["turns"]
-    assert turns[0]["content"] == "first" and turns[0]["role"] == "user"
+    assert turns[0]["content"] == "first security question" and turns[0]["role"] == "user"
     assert turns[-1]["role"] == "assistant"
 
 
@@ -179,7 +179,7 @@ def test_unicode_and_surrogates_round_trip(client):
 
 def test_clear_history_requires_confirm(client):
     eng = _make_engagement(client, "Hist Co", "Clear Guard")
-    _chat(client, eng["id"], "hello")
+    _chat(client, eng["id"], "hello, any risks?")
     resp = client.delete(f"/chat/history/{eng['id']}")
     assert resp.status_code == 400
     resp = client.delete(f"/chat/history/{eng['id']}?confirm=true")
@@ -190,11 +190,14 @@ def test_clear_history_requires_confirm(client):
 
 def test_clear_then_chat_again(client):
     eng = _make_engagement(client, "Hist Co", "Clear Then Chat")
-    _chat(client, eng["id"], "before clear")
+    _chat(client, eng["id"], "before clear, any risks?")
     assert client.delete(f"/chat/history/{eng['id']}?confirm=true").status_code == 200
-    _chat(client, eng["id"], "after clear")
+    _chat(client, eng["id"], "after clear, any risks?")
     turns = client.get(f"/chat/history/{eng['id']}").json()["turns"]
-    assert [t["content"] for t in turns] == ["after clear", "This is a stub conversational reply from Fortis."]
+    assert [t["content"] for t in turns] == [
+        "after clear, any risks?",
+        "This is a stub conversational reply from Fortis.",
+    ]
 
 
 # ---- engagement deletion cascades -------------------------------------------------
@@ -222,7 +225,7 @@ def test_history_of_deleted_engagement_404(client):
 
 def test_invalid_limit_is_clamped(client):
     eng = _make_engagement(client, "Hist Co", "Limit Clamp")
-    _chat(client, eng["id"], "hello")
+    _chat(client, eng["id"], "hello, any risks?")
     resp = client.get(f"/chat/history/{eng['id']}?limit=0")
     assert resp.status_code == 200
     assert len(resp.json()["turns"]) == 1
@@ -235,6 +238,6 @@ def test_llm_context_window_unchanged_by_persistence(client):
     the UI's 16-message window (contract from the original chat design)."""
     eng = _make_engagement(client, "Hist Co", "Window")
     for i in range(5):
-        _chat(client, eng["id"], f"turn {i}")
+        _chat(client, eng["id"], f"security turn {i}: any risks?")
     turns = client.get(f"/chat/history/{eng['id']}").json()["turns"]
     assert len(turns) == 10  # 5 turns x (user+assistant) persisted

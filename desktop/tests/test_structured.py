@@ -2,9 +2,11 @@
 Tests for structured output detection, validation, and retry logic.
 """
 import asyncio
+import json
 import os
 
 import pytest
+from fastapi.testclient import TestClient
 
 from core.structured import (
     detect_structured_output_request,
@@ -17,6 +19,60 @@ from core.structured import (
 )
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "structured")
+
+CANNED_MERMAID = """```mermaid
+flowchart LR
+    A["Test"] --> B["Diagram"]
+```"""
+
+
+@pytest.fixture
+def client():
+    from server.app import app as server_app
+
+    with TestClient(server_app) as c:
+        yield c
+
+
+@pytest.fixture(autouse=True)
+def stub_llm(monkeypatch):
+    async def fake_chat(messages, temperature=0.2, json_mode=False):
+        system_content = messages[0]["content"] if messages else ""
+        last_content = messages[-1]["content"] if messages else ""
+        if "ONE batch of excerpts" in system_content:
+            return json.dumps({"key_points": [], "findings": []})
+        if json_mode:
+            return json.dumps({
+                "title": "Stub Security Assessment",
+                "client_context": "Stub context",
+                "scope": "Stub scope",
+                "executive_summary": "Stub finding: verify with a real model",
+                "findings": [{
+                    "title": "Stub finding", "severity": "Medium",
+                    "description": "Stub", "evidence": "stub",
+                    "source_file": None, "framework": "NIST_CSF",
+                    "control_id": "PR.PS", "remediation": "Load a real model and re-run.",
+                }],
+                "overall_risk_rating": "Medium",
+                "recommendations_summary": ["Load a real model and re-run."],
+                "diagram": CANNED_MERMAID,
+            })
+        if "mermaid code block" in last_content and FORMAT_INSTRUCTIONS["diagram"][:40] in last_content:
+            return CANNED_MERMAID
+        return "This is a stub conversational reply from Fortis."
+
+    monkeypatch.setattr("core.analysis.chat", fake_chat)
+    monkeypatch.setattr("core.routers.chat.chat", fake_chat)
+    monkeypatch.setattr("core.routers.chat.chat_stream", fake_chat)
+
+
+@pytest.fixture
+def eng_id(client):
+    resp = client.post(
+        "/engagements", json={"client_name": "Structured Co", "engagement_name": "Structured Eng"}
+    )
+    assert resp.status_code == 200
+    return resp.json()["id"]
 
 
 # ---- Intent detection ----------------------------------------------------
@@ -191,70 +247,46 @@ flowchart LR
     assert reply_has_valid_diagram(result) is False
 
 
-# ---- Orchestrator wiring -------------------------------------------------
+# ---- Chat pipeline wiring (served by /chat, what the UI calls) -----------
 
-def test_orchestrator_structured_intent_wiring(monkeypatch):
-    from server.orchestration import Orchestrator
-    
+def test_structured_intent_wiring_via_chat(client, eng_id):
     canned_reply = """```mermaid
 flowchart LR
     A["Test"] --> B["Diagram"]
 ```"""
-    
-    async def fake_run_structured_turn(engagement_id, message, history, intent, role=None):
-        return canned_reply
-    
-    monkeypatch.setattr("server.orchestration.run_structured_turn", fake_run_structured_turn)
-    monkeypatch.setattr("server.orchestration.store.get_active_engagement", lambda uid: {
-        "id": "test-eng", "client_name": "Test", "name": "Test", "status": "active"
-    })
-    monkeypatch.setattr("server.orchestration.vectorstore.list_engagement_files", lambda eid: [])
-    
-    orch = Orchestrator()
-    result = orch.chat_turn("draw a network diagram", history=[])
-    
-    assert result["kind"] == "chat"
-    assert canned_reply in result["text"]
+
+    resp = client.post(
+        "/chat",
+        json={"engagement_id": eng_id, "message": "draw a network diagram"},
+    )
+
+    assert resp.status_code == 200
+    assert canned_reply in resp.json()["reply"]
 
 
-def test_orchestrator_report_intent_takes_priority(monkeypatch):
-    from server.orchestration import Orchestrator
-    
-    def fake_generate_report_download(self, engagement_id, fmt, focus_text):
-        return {
-            "download_url": "/report/download/test.docx",
-            "findings_count": 1,
-            "overall_risk_rating": "Medium",
-            "engagement": {"client_name": "Test", "engagement_name": "Test"},
-        }
-    
-    monkeypatch.setattr(Orchestrator, "generate_report_download", fake_generate_report_download)
-    monkeypatch.setattr("server.orchestration.store.get_active_engagement", lambda uid: {
-        "id": "test-eng", "client_name": "Test", "name": "Test", "status": "active"
-    })
-    monkeypatch.setattr("server.orchestration.vectorstore.list_engagement_files", lambda eid: [])
-    
-    orch = Orchestrator()
-    result = orch.chat_turn("generate a pdf report", history=[])
-    
-    assert result["kind"] == "report"
+def test_report_intent_takes_priority_via_chat(client, eng_id):
+    import io as _io
+    client.post(
+        "/upload",
+        files={"file": ("doc.txt", _io.BytesIO(b"password=hunter2\n"), "text/plain")},
+        data={"engagement_id": eng_id},
+    )
+    resp = client.post(
+        "/chat",
+        json={"engagement_id": eng_id, "message": "generate a pdf report"},
+    )
+
+    assert resp.status_code == 200
+    reply = resp.json()["reply"]
+    assert "report" in reply.lower()
+    assert "```mermaid" not in reply, "report intent must win over diagram intent"
 
 
-def test_orchestrator_plain_message_takes_normal_chat(monkeypatch):
-    from server.orchestration import Orchestrator
-    
-    async def fake_chat(messages):
-        return "Normal chat response"
-    
-    monkeypatch.setattr("engine.chat", fake_chat)
-    monkeypatch.setattr("server.orchestration.store.get_active_engagement", lambda uid: {
-        "id": "test-eng", "client_name": "Test", "name": "Test", "status": "active"
-    })
-    monkeypatch.setattr("server.orchestration.vectorstore.list_engagement_files", lambda eid: [])
-    monkeypatch.setattr("server.orchestration.rag.build_chat_messages", lambda eid, msg, hist, role=None, retrieval_query=None: [{"role": "user", "content": msg}])
-    
-    orch = Orchestrator()
-    result = orch.chat_turn("what is XSS?", history=[])
-    
-    assert result["kind"] == "chat"
-    assert "Normal chat response" in result["text"]
+def test_plain_message_takes_normal_chat(client, eng_id):
+    resp = client.post(
+        "/chat",
+        json={"engagement_id": eng_id, "message": "what is XSS?"},
+    )
+
+    assert resp.status_code == 200
+    assert "stub conversational reply" in resp.json()["reply"].lower()

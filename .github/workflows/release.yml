@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  github-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract changelog section for this tag
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 - <<'EOF'
+          import os, re
+
+          version = os.environ["VERSION"]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          match = re.search(
+              rf"^## \[{re.escape(version)}\] — .+?\n(.*?)(?=^## \[|\Z)",
+              text, re.MULTILINE | re.DOTALL,
+          )
+          body = match.group(1).strip() if match else "See CHANGELOG.md for details."
+          with open("release_body.md", "w", encoding="utf-8") as fh:
+              fh.write(body)
+          EOF
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_body.md

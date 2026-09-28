@@ -216,20 +216,31 @@ async def _call_json(system_prompt: str, user_content: str) -> Dict:
 
 
 async def _call_json_once(system_prompt: str, user_content: str) -> Dict:
-    raw = await chat(
-        [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}],
-        temperature=0.1,
-        json_mode=True,
+    import asyncio
+
+    raw = await asyncio.wait_for(
+        chat(
+            [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}],
+            temperature=0.1,
+            json_mode=True,
+        ),
+        timeout=settings.llm_call_timeout_seconds,
     )
     return _parse_json_response(raw)
 
 
 def _parse_json_response(text: str) -> Dict:
     import re
-    pattern = r"```(?:json)?\s*(.*?)\s*```"
-    match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-    if match:
-        text = match.group(1)
+    text = text.strip()
+    # Strip only an OUTER code fence. A naive search for the first ``` pair
+    # would truncate payloads whose string values contain fences (e.g. a
+    # mermaid `diagram` field), destroying the JSON.
+    if text.startswith("```"):
+        lines = [l for l in text.splitlines() if not l.strip().startswith("```")]
+        text = "\n".join(lines).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        text = text[start:end + 1]
     try:
         data = json.loads(text)
     except json.JSONDecodeError:

@@ -279,7 +279,7 @@ def test_chat_endpoint_role_reaches_build_chat_messages(monkeypatch):
         resp = client.post("/engagements", json={"client_name": "Test Co", "engagement_name": "Test Eng"})
         eng_id = resp.json()["id"]
         
-        resp = client.post("/chat", json={"engagement_id": eng_id, "message": "hello", "role": "grc"})
+        resp = client.post("/chat", json={"engagement_id": eng_id, "message": "what security risks do you see?", "role": "grc"})
         assert resp.status_code == 200
         assert captured_kwargs.get("role") == "grc"
 
@@ -308,7 +308,7 @@ def test_chat_endpoint_unknown_role_coerced(monkeypatch):
         resp = client.post("/engagements", json={"client_name": "Test Co", "engagement_name": "Test Eng"})
         eng_id = resp.json()["id"]
         
-        resp = client.post("/chat", json={"engagement_id": eng_id, "message": "hello", "role": "unknown_role"})
+        resp = client.post("/chat", json={"engagement_id": eng_id, "message": "what security risks do you see?", "role": "unknown_role"})
         assert resp.status_code == 200
         assert captured_kwargs.get("role") is None
 
@@ -341,46 +341,9 @@ def test_chat_stream_endpoint_role_reaches_build_chat_messages(monkeypatch):
         resp = client.post("/engagements", json={"client_name": "Test Co", "engagement_name": "Test Eng"})
         eng_id = resp.json()["id"]
         
-        resp = client.post("/chat/stream", json={"engagement_id": eng_id, "message": "hello", "role": "code"})
+        resp = client.post("/chat/stream", json={"engagement_id": eng_id, "message": "what security risks do you see?", "role": "code"})
         assert resp.status_code == 200
         assert captured_kwargs.get("role") == "code"
-
-
-# ---- Orchestrator.chat_turn role passthrough tests --------------------------
-
-def test_orchestrator_chat_turn_role_passes_to_chat(monkeypatch):
-    from server.orchestration import Orchestrator
-    from core import rag
-    from core import store
-    
-    captured_role = {}
-    
-    def mock_get_active_engagement(user_id):
-        return {"id": "test-eng", "client_name": "Test", "name": "Test", "status": "active", "files": []}
-    
-    def mock_get_engagement(eng_id):
-        return {"id": "test-eng", "client_name": "Test", "name": "Test", "status": "active"}
-    
-    monkeypatch.setattr(store, "get_active_engagement", mock_get_active_engagement)
-    monkeypatch.setattr(store, "get_engagement", mock_get_engagement)
-    
-    original_build = rag.build_chat_messages
-    
-    def capture_build(engagement_id, user_message, history=None, role=None, retrieval_query=None):
-        captured_role["role"] = role
-        return original_build(engagement_id, user_message, history, role=role)
-    
-    monkeypatch.setattr(rag, "build_chat_messages", capture_build)
-    
-    async def fake_engine_chat(messages):
-        return "stub reply"
-    
-    monkeypatch.setattr("engine.chat", fake_engine_chat)
-    
-    orch = Orchestrator()
-    result = orch.chat_turn("what security vulnerabilities are in this code?", role="osint")
-    
-    assert captured_role.get("role") == "osint"
 
 
 # ---- /api/model/select n_ctx test -------------------------------------------

@@ -6,11 +6,12 @@ from pydantic import BaseModel
 
 from .. import rag, store
 from .. import report_intent as ri
+from .. import guardrail
 from ..config import settings
 from ..condense import condense_query
 from ..rag import ROLE_PRESETS
+from ..report_service import trim_focus_text, generate_report_result
 from ..structured import FORMAT_INSTRUCTIONS, REPAIR_INSTRUCTIONS, detect_structured_output_request, reply_has_valid_diagram, is_valid_gfm_table
-from .report import generate_report_result
 from engine import chat, chat_stream
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -62,18 +63,20 @@ async def chat_endpoint(req: ChatRequest):
     if req.history:
         for entry in req.history:
             entry["content"] = store.clean(entry.get("content", ""))
+    kind, refusal = guardrail.classify(req.message)
+    if kind == "offtopic":
+        await _persist_turn(req.engagement_id, req.message, refusal)
+        return {"reply": refusal}
     fmt = ri.detect_report_request(req.message)
     if fmt:
         if ri.is_stub_backend():
             reply = ri.chat_stub_gate_reply()
             await _persist_turn(req.engagement_id, req.message, reply)
             return {"reply": reply}
-        result = await generate_report_result(req.engagement_id, fmt, req.message)
+        result = await generate_report_result(req.engagement_id, fmt, trim_focus_text(req.message))
         if "error" in result:
             raise HTTPException(result.get("status", 400), result["error"])
-        reply = ri.format_report_reply(result, ri.is_stub_backend())
-        await _persist_turn(req.engagement_id, req.message, reply)
-        return {"reply": reply}
+        return {"reply": ri.format_report_reply(result, ri.is_stub_backend())}
     role = req.role if req.role in ROLE_PRESETS else None
     retrieval_query = await condense_query(req.history, req.message, settings.rag_level)
     intent = detect_structured_output_request(req.message)
@@ -83,6 +86,11 @@ async def chat_endpoint(req: ChatRequest):
         return {"reply": reply}
     messages = rag.build_chat_messages(req.engagement_id, req.message, req.history, role=role, retrieval_query=retrieval_query)
     reply = await chat(messages)
+    if guardrail.is_offtopic_refusal(reply):
+        messages = rag.build_chat_messages(
+            req.engagement_id, guardrail.forced_answer_prompt(req.message), req.history, role=role, retrieval_query=retrieval_query
+        )
+        reply = await chat(messages)
     await _persist_turn(req.engagement_id, req.message, reply)
     return {"reply": reply}
 
@@ -94,6 +102,12 @@ async def chat_stream_endpoint(req: ChatRequest):
     if req.history:
         for entry in req.history:
             entry["content"] = store.clean(entry.get("content", ""))
+    kind, refusal = guardrail.classify(req.message)
+    if kind == "offtopic":
+        async def refusal_generator():
+            await _persist_turn(req.engagement_id, req.message, refusal)
+            yield refusal
+        return StreamingResponse(refusal_generator(), media_type="text/plain")
     fmt = ri.detect_report_request(req.message)
     if fmt:
         if ri.is_stub_backend():
@@ -102,7 +116,7 @@ async def chat_stream_endpoint(req: ChatRequest):
                 await _persist_turn(req.engagement_id, req.message, reply)
                 yield reply
             return StreamingResponse(gate_generator(), media_type="text/plain")
-        result = await generate_report_result(req.engagement_id, fmt, req.message)
+        result = await generate_report_result(req.engagement_id, fmt, trim_focus_text(req.message))
         if "error" in result:
             raise HTTPException(result.get("status", 400), result["error"])
         reply = ri.format_report_reply(result, ri.is_stub_backend())
@@ -126,7 +140,15 @@ async def chat_stream_endpoint(req: ChatRequest):
         async for token in chat_stream(messages):
             acc.append(token)
             yield token
-        await _persist_turn(req.engagement_id, req.message, "".join(acc))
+        full = "".join(acc)
+        if guardrail.is_offtopic_refusal(full):
+            retry = rag.build_chat_messages(
+                req.engagement_id, guardrail.forced_answer_prompt(req.message), req.history, role=role, retrieval_query=retrieval_query
+            )
+            async for token in chat_stream(retry):
+                yield token
+            return
+        await _persist_turn(req.engagement_id, req.message, full)
 
     return StreamingResponse(generator(), media_type="text/plain")
 

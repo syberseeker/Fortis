@@ -59,9 +59,11 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_engagement
 
 @contextmanager
 def _conn():
-    conn = sqlite3.connect(settings.db_path)
+    conn = sqlite3.connect(settings.db_path, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 15000")
     try:
         yield conn
         conn.commit()

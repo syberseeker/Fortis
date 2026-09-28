@@ -1,7 +1,6 @@
 import logging
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from .frameworks import seed_all_frameworks, FRAMEWORK_NAMES
 from engine import check_model_available
@@ -11,14 +10,9 @@ from .routers import upload, chat, report, engagements
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Fortis — AI Cybersecurity Advisor", version="0.4.1")
+APP_VERSION = "0.5.0"
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="Fortis — AI Cybersecurity Advisor", version=APP_VERSION)
 
 app.include_router(engagements.router)
 app.include_router(upload.router)
@@ -44,4 +38,5 @@ async def health():
         "status": "ok" if not model_warning else "degraded",
         "detail": model_warning,
         "frameworks_loaded": FRAMEWORK_NAMES,
+        "version": APP_VERSION,
     }

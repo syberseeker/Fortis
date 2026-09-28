@@ -26,11 +26,24 @@ _resolved_device: str = ""
 _cuda_broken: bool = False
 
 
+def _torch_cuda_ok() -> bool:
+    """True only when the installed torch was compiled with CUDA and reports
+    a usable device. Checked before choosing 'cuda' so a CPU-only torch wheel
+    (common on machines with an NVIDIA GPU but the wrong wheel) does not
+    produce a failed model load with a confusing traceback."""
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
 def _resolve_device() -> str:
-    """Pick the encode device once per process. 'cuda' when an NVIDIA GPU is
-    present, else 'cpu'. Downgrades permanently to 'cpu' after a CUDA failure
-    at model load or first encode (e.g. driver mismatch or CUDA wheel missing
-    for torch)."""
+    """Pick the encode device once per process. 'cuda' only when an NVIDIA
+    GPU is present AND torch reports CUDA usable. Downgrades permanently to
+    'cpu' after a CUDA failure at model load or first encode (e.g. driver
+    mismatch)."""
     global _resolved_device, _cuda_broken
     if _resolved_device:
         return _resolved_device
@@ -38,10 +51,12 @@ def _resolve_device() -> str:
     try:
         from engine.hardware import can_use_cuda
 
-        if can_use_cuda() and not _cuda_broken:
+        if can_use_cuda() and _torch_cuda_ok() and not _cuda_broken:
             device = "cuda"
     except Exception:
         device = "cpu"
+    if device == "cpu":
+        logger.info("Embeddings running on CPU (no usable CUDA torch)")
     _resolved_device = device
     return device
 
