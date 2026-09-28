@@ -14,6 +14,8 @@ import asyncio
 import json
 import logging
 import os
+import re
+import sys
 import threading
 import time
 from typing import List, Dict, Optional
@@ -188,6 +190,106 @@ def _oom_ladder(attempted: int) -> List[int]:
     return steps
 
 
+def _memory_context() -> str:
+    """Human-readable RAM summary for load-failure diagnostics."""
+    try:
+        import psutil
+
+        vm = psutil.virtual_memory()
+        return "free RAM: %.1f GB / %.1f GB" % (vm.available / (1024 ** 3), vm.total / (1024 ** 3))
+    except Exception:
+        try:
+            import ctypes
+
+            class _MEM(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                ]
+
+            mem = _MEM()
+            mem.dwLength = ctypes.sizeof(_MEM)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem)):
+                return "free RAM: %.1f GB / %.1f GB" % (
+                    mem.ullAvailPhys / (1024 ** 3), mem.ullTotalPhys / (1024 ** 3),
+                )
+        except Exception:
+            pass
+        return "free RAM: unknown"
+
+
+_MEMORY_HINT_RE = re.compile(
+    r"alloc|out of memory|memory|mmap|buffer|insufficient|failed to allocate",
+    re.IGNORECASE,
+)
+
+
+def _is_memory_load_error(e: Exception) -> bool:
+    """Matches RAM/VRAM allocation failures from llama.cpp, CUDA or not."""
+    return bool(_MEMORY_HINT_RE.search(str(e)))
+
+
+def _construct_llama(path: str, n_ctx: int, n_gpu_layers: int, n_threads: int, n_batch: int):
+    """Single construction seam (tests monkeypatch this to fake load
+    failures without real weights)."""
+    from llama_cpp import Llama
+
+    return Llama(
+        model_path=path,
+        n_ctx=n_ctx,
+        n_gpu_layers=n_gpu_layers,
+        n_threads=n_threads,
+        n_batch=n_batch,
+        verbose=False,
+    )
+
+
+class _Capture(object):
+    """Captures C-level stdout/stderr during Llama() construction so the real
+    llama.cpp failure reason (allocation errors etc.) can be logged even with
+    verbose=False. Python-level print is captured too."""
+
+    def __enter__(self):
+        import io
+        import tempfile
+
+        self._io = io
+        self._buf = tempfile.TemporaryFile(mode="w+")
+        self._saved_out = sys.stdout
+        self._saved_err = sys.stderr
+        self._saved_out_fd = os.dup(1)
+        self._saved_err_fd = os.dup(2)
+        sys.stdout = self._buf
+        sys.stderr = self._buf
+        os.dup2(self._buf.fileno(), 1)
+        os.dup2(self._buf.fileno(), 2)
+        return self
+
+    def __exit__(self, *exc):
+        sys.stdout = self._saved_out
+        sys.stderr = self._saved_err
+        os.dup2(self._saved_out_fd, 1)
+        os.dup2(self._saved_err_fd, 2)
+        os.close(self._saved_out_fd)
+        os.close(self._saved_err_fd)
+        self._buf.seek(0)
+        self.text = self._buf.read()
+        self._buf.close()
+
+
+def _last_error_lines(captured: str, keep: int = 12) -> str:
+    lines = [l.rstrip() for l in (captured or "").splitlines() if l.strip()]
+    if not lines:
+        return ""
+    return "\n".join(lines[-keep:])
+
+
 def _load_sync() -> None:
     """Blocking load. Caller must hold _LOCK."""
     path = current_model_path()
@@ -196,71 +298,118 @@ def _load_sync() -> None:
         return
     if _STATE["model"] is not None and _STATE["path"] == path:
         return  # already loaded
-    try:
-        from llama_cpp import Llama
 
-        n_threads = _resolved_threads()
-        known = _STATE.get("offload_level")
-        if known is not None:
-            first = known
-        else:
-            first = settings.n_gpu_layers
-            if first == -1:
-                first = _auto_gpu_layers(path)
-        attempts = [first] + _oom_ladder(first)
+    n_threads = _resolved_threads()
+    known = _STATE.get("offload_level")
+    if known is not None:
+        first = known
+    else:
+        first = settings.n_gpu_layers
+        if first == -1:
+            first = _auto_gpu_layers(path)
+    attempts = [first] + _oom_ladder(first)
 
-        llm = None
-        last_error: Optional[Exception] = None
-        for i, n_gpu in enumerate(attempts):
-            if i > 0:
-                logger.warning(
-                    "GPU offload failed at n_gpu_layers=%d (%s); retrying with n_gpu_layers=%d",
-                    attempts[i - 1], last_error, n_gpu,
-                )
-            logger.info(
-                "Loading GGUF: %s (n_gpu_layers=%s, n_ctx=%d, n_threads=%d, n_batch=%d)",
-                os.path.basename(path), n_gpu, settings.n_ctx, n_threads, settings.n_batch,
+    llm = None
+    last_error: Optional[Exception] = None
+    for i, n_gpu in enumerate(attempts):
+        if i > 0:
+            logger.warning(
+                "GPU offload failed at n_gpu_layers=%d (%s); retrying with n_gpu_layers=%d",
+                attempts[i - 1], last_error, n_gpu,
             )
-            t0 = time.time()
-            try:
-                llm = Llama(
-                    model_path=path,
-                    n_ctx=settings.n_ctx,
-                    n_gpu_layers=n_gpu,
-                    n_threads=n_threads,
-                    n_batch=settings.n_batch,
-                    verbose=False,
-                )
-                break
-            except Exception as e:
-                last_error = e
-                llm = None
-                if n_gpu <= 0 or not _is_cuda_oom_error(e):
-                    raise
-        if llm is None:
-            if last_error is not None:
-                raise last_error
-            raise RuntimeError("model load failed")
-        # warm-up so the first real message is not the compile/load hit
+        logger.info(
+            "Loading GGUF: %s (n_gpu_layers=%s, n_ctx=%d, n_threads=%d, n_batch=%d)",
+            os.path.basename(path), n_gpu, settings.n_ctx, n_threads, settings.n_batch,
+        )
+        t0 = time.time()
+        cap_text = ""
         try:
-            llm.create_chat_completion(
-                messages=[{"role": "user", "content": "OK"}],
-                max_tokens=1, temperature=0.0,
+            with _Capture() as cap:
+                llm = _construct_llama(
+                    path, settings.n_ctx, n_gpu, n_threads, settings.n_batch
+                )
+            break
+        except Exception as e:
+            try:
+                cap_text = cap.text
+            except NameError:
+                pass
+            last_error = e
+            llm = None
+            if n_gpu <= 0 or not _is_cuda_oom_error(e):
+                _record_load_error(e, cap_text)
+                raise
+    if llm is None:
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("model load failed")
+
+    # warm-up so the first real message is not the compile/load hit
+    try:
+        llm.create_chat_completion(
+            messages=[{"role": "user", "content": "OK"}],
+            max_tokens=1, temperature=0.0,
+        )
+    except Exception:
+        pass
+    _STATE["model"] = llm
+    _STATE["path"] = path
+    _STATE["error"] = None
+    _STATE["offload_level"] = n_gpu
+    logger.info("Model ready in %.1fs (n_gpu_layers=%d)", time.time() - t0, n_gpu)
+
+
+def _load_sync_and_record() -> None:
+    """_load_sync plus failure recording; used by the RAM-fallback wrapper."""
+    try:
+        _load_sync()
+    except Exception as e:
+        _record_load_error(e)
+        raise
+
+
+def _load_sync_with_ram_fallback(path: str, n_threads: int) -> None:
+    """Full load path with a reduced-context retry for RAM allocation
+    failures (the CUDA-only OOM ladder cannot recover those)."""
+    try:
+        _load_sync_and_record()
+        return
+    except Exception as e:
+        if not _is_memory_load_error(e) or settings.n_ctx <= 4096:
+            raise
+        reduced_ctx = min(settings.n_ctx, 4096)
+        reduced_batch = min(settings.n_batch, 256)
+        logger.error(
+            "Model load failed (%s); %s. Retrying once with reduced context "
+            "n_ctx=%d (original %d), n_batch=%d",
+            e, _memory_context(), reduced_ctx, settings.n_ctx, reduced_batch,
+        )
+        original_ctx, original_batch = settings.n_ctx, settings.n_batch
+        try:
+            settings.n_ctx = reduced_ctx
+            settings.n_batch = reduced_batch
+            _load_sync_and_record()
+            logger.warning(
+                "Model loaded with reduced context n_ctx=%d — lower conversation "
+                "memory; raise RAM headroom or pick a smaller tier for the full %d context.",
+                reduced_ctx, original_ctx,
             )
         except Exception:
-            pass
-        _STATE["model"] = llm
-        _STATE["path"] = path
-        _STATE["error"] = None
-        _STATE["offload_level"] = n_gpu
-        logger.info("Model ready in %.1fs (n_gpu_layers=%d)", time.time() - t0, n_gpu)
-    except Exception as e:
-        _STATE["model"] = None
-        _STATE["path"] = None
-        _STATE["error"] = str(e)
-        _STATE["offload_level"] = None
-        logger.exception("Failed to load model %s", path)
-        raise
+            raise
+        finally:
+            settings.n_ctx = original_ctx
+            settings.n_batch = original_batch
+
+
+def _record_load_error(e: Exception, captured: str = "") -> None:
+    detail = _last_error_lines(captured)
+    context = _memory_context()
+    base = f"model load failed: {e} ({context})"
+    _STATE["model"] = None
+    _STATE["path"] = None
+    _STATE["offload_level"] = None
+    _STATE["error"] = f"{base}\n{detail}" if detail else base
+    logger.error("%s\n%s", base, detail)
 
 
 def load_model(path: Optional[str] = None, n_ctx: Optional[int] = None) -> None:
@@ -273,13 +422,13 @@ def load_model(path: Optional[str] = None, n_ctx: Optional[int] = None) -> None:
         _STATE["model"] = None
         _STATE["path"] = None
         _STATE["error"] = None
-        _load_sync()
+        _load_sync_with_ram_fallback(path or current_model_path() or "", _resolved_threads())
 
 
 def ensure_loaded() -> None:
     with _LOCK:
         if _STATE["model"] is None:
-            _load_sync()
+            _load_sync_with_ram_fallback(current_model_path() or "", _resolved_threads())
 
 
 def _clean(text: str) -> str:

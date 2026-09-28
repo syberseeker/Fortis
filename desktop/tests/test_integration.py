@@ -431,7 +431,9 @@ def test_chat_stream_returns_text_plain(client):
 
 # ---- Report generation edge cases ---------------------------------------
 
-def test_report_generation_invalid_format(client):
+def test_report_generation_invalid_format(client, monkeypatch):
+    import core.report_intent as _ri
+    monkeypatch.setattr(_ri, "is_stub_backend", lambda: False)  # format contract, not the gate
     eng = _make_engagement(client, "Invalid Format Co", "Bad Format Test")
     client.post(
         "/upload",
@@ -446,7 +448,9 @@ def test_report_generation_invalid_format(client):
     assert "format must be one of" in resp.json()["detail"]
 
 
-def test_report_generation_engagement_not_found(client):
+def test_report_generation_engagement_not_found(client, monkeypatch):
+    import core.report_intent as _ri
+    monkeypatch.setattr(_ri, "is_stub_backend", lambda: False)  # 404 routing contract, not the gate
     resp = client.post(
         "/report/generate", json={"engagement_id": "nonexistent", "format": "docx"}
     )

@@ -2,8 +2,26 @@
 
 All notable changes to Fortis, traced from the initial commit (2026-09-21)
 to the current build. Each version below is tagged in git (`v0.1.0` …
-`v0.5.0`) at the commit that marks its release. Format loosely follows
+`v0.5.1`) at the commit that marks its release. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
+
+## [0.5.1] — 2026-09-25
+
+### Fixed
+- **Model-load failures are diagnosable and recoverable.** The generic
+  `Failed to load model from file` error (which hid the real cause — in the
+  field, a RAM allocation failure while mapping an 8B model) now captures
+  llama.cpp's C-level output during loading and, on failure, logs the actual
+  error lines plus machine context (free/total RAM). Memory-shaped load
+  failures retry once with a reduced context (`n_ctx` 4096, `n_batch` 256)
+  before giving up; the error shown in the UI names the real cause.
+- **Test suite no longer stomps the user's model selection.** `set_selection`
+  in test runs previously wrote temp-model paths into the real
+  `%APPDATA%\Fortis\models\active_model.json`, silently switching the
+  desktop app to a nonexistent model after every test run. The offline
+  conftest now sandboxes the full data dir (`FORTIS_DATA_DIR`, including
+  `models/`) and pins the LLM backend to `stub`; tests that pin other
+  contracts explicitly opt out of the placeholder gate.
 
 ## [0.5.0] — 2026-09-25
 

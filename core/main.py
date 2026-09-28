@@ -10,7 +10,7 @@ from .routers import upload, chat, report, engagements
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 
 app = FastAPI(title="Fortis — AI Cybersecurity Advisor", version=APP_VERSION)
 

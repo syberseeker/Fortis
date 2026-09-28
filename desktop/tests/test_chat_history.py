@@ -53,6 +53,15 @@ def client():
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _history_tests_bypass_stub_gate(monkeypatch):
+    """The report-turn persistence test needs the report path to run;
+    conftest pins the backend to stub, which gates reports. The gate has
+    dedicated tests elsewhere."""
+    import core.report_intent as _ri
+    monkeypatch.setattr(_ri, "is_stub_backend", lambda: False)
+
+
 def _make_engagement(client: TestClient, client_name: str, name: str) -> dict:
     resp = client.post(
         "/engagements", json={"client_name": client_name, "engagement_name": name}

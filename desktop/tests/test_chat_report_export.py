@@ -38,6 +38,16 @@ FAKE_REPORT = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _export_tests_bypass_stub_gate(monkeypatch):
+    """These tests pin the report EXPORT contract (files written to
+    report_dir), not the placeholder gate. conftest pins the backend to stub,
+    which would otherwise gate every report; the gate itself has dedicated
+    tests."""
+    import core.report_intent as _ri
+    monkeypatch.setattr(_ri, "is_stub_backend", lambda: False)
+
+
 def _make_engagement(client: TestClient, client_name: str, name: str) -> dict:
     resp = client.post(
         "/engagements", json={"client_name": client_name, "engagement_name": name}

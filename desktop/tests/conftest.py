@@ -26,6 +26,8 @@ import tempfile
 _tmp = tempfile.mkdtemp(prefix="fortis-test-")
 
 os.environ["EMBEDDING_BACKEND"] = "hash-stub"
+os.environ["FORTIS_DATA_DIR"] = _tmp
+os.environ["FORTIS_LLM_BACKEND"] = "stub"
 os.environ["DB_PATH"] = os.path.join(_tmp, "engagements.sqlite3")
 os.environ["CHROMA_PERSIST_DIR"] = os.path.join(_tmp, "chroma")
 os.environ["UPLOAD_DIR"] = os.path.join(_tmp, "uploads")
