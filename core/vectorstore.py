@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import List, Dict, Optional
 
@@ -7,6 +8,8 @@ from chromadb.config import Settings as ChromaSettings
 from .config import settings
 from . import bm25 as bm25_index
 from .embeddings import embed_texts, embed_query
+
+logger = logging.getLogger(__name__)
 
 _client = chromadb.PersistentClient(
     path=settings.chroma_persist_dir,
@@ -26,6 +29,20 @@ def framework_collection():
     return _frameworks
 
 
+def _invalidate_corpus_caches() -> None:
+    import importlib
+
+    for module_name, attr in (
+        ("core.analysis", "invalidate_framework_context_cache"),
+        ("core.report_service", "invalidate_known_framework_pairs_cache"),
+        ("core.embeddings", "clear_query_cache"),
+    ):
+        try:
+            getattr(importlib.import_module(module_name), attr)()
+        except (ImportError, AttributeError):
+            pass
+
+
 def add_user_document_chunks(
     engagement_id: str,
     filename: str,
@@ -40,7 +57,11 @@ def add_user_document_chunks(
     ]
     embeddings = embed_texts(chunks)
     _user_docs.add(ids=ids, embeddings=embeddings, documents=chunks, metadatas=metadatas)
-    bm25_index.mark_dirty(USER_DOCS_COLLECTION)
+    try:
+        bm25_index.update(USER_DOCS_COLLECTION, engagement_id, ids, metadatas, chunks)
+    except Exception:
+        logger.warning("BM25 incremental update failed; marking index dirty", exc_info=True)
+        bm25_index.mark_dirty(USER_DOCS_COLLECTION)
     return len(chunks)
 
 
@@ -89,6 +110,7 @@ def seed_framework_chunks(framework: str, chunks: List[Dict[str, str]], force: b
     embeddings = embed_texts(texts)
     _frameworks.add(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
     bm25_index.mark_dirty(FRAMEWORKS_COLLECTION)
+    _invalidate_corpus_caches()
 
 
 def load_verbatim_framework_document(framework: str, source_name: str, chunks: List[str]) -> int:
@@ -115,6 +137,7 @@ def load_verbatim_framework_document(framework: str, source_name: str, chunks: L
     embeddings = embed_texts(chunks)
     _frameworks.add(ids=ids, embeddings=embeddings, documents=chunks, metadatas=metadatas)
     bm25_index.mark_dirty(FRAMEWORKS_COLLECTION)
+    _invalidate_corpus_caches()
     return len(chunks)
 
 
@@ -167,7 +190,9 @@ def query_user_documents_hybrid(
 ) -> List[Dict]:
     """Dense retrieval fused with BM25 keyword scoring (RRF). The BM25 index
     is scoped to the engagement via a metadata getter, mirroring the dense
-    where filter. Returns the same shape as query_user_documents."""
+    where filter; incremental updates via bm25_index.update keep the index
+    warm across uploads so the full-corpus rebuild stays rare. Returns the
+    same shape as query_user_documents."""
     dense = query_user_documents(engagement_id, query, top_k * candidate_multiplier)
 
     def _getter():

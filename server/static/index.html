@@ -4,9 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fortis — Cybersecurity Advisor</title>
-<link rel="icon" type="image/png" href="/ui/logo.png">
+<link rel="icon" type="image/png" href="/ui/favicon.png">
 <script src="/ui/vendor/markdown-it.min.js"></script>
-<script src="/ui/vendor/mermaid.min.js"></script>
 <style>
 :root {
   --bg: #0a0e14; --bg2: #111820; --bg3: #1a232e; --border: #26303d;
@@ -345,11 +344,29 @@ if (!window.markdownit) {
 const md = window.markdownit({ linkify: true, breaks: true });
 
 let mermaidReady = false;
-if (window.mermaid) {
-  try {
-    window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' });
-    mermaidReady = true;
-  } catch (e) { mermaidReady = false; }
+let mermaidPromise = null;
+function ensureMermaid() {
+  if (mermaidReady && window.mermaid) return mermaidPromise || Promise.resolve();
+  if (!mermaidPromise) {
+    mermaidPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = '/ui/vendor/mermaid.min.js';
+      s.onload = () => {
+        try {
+          window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' });
+          mermaidReady = true;
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      };
+      s.onerror = () => {
+        reject(new Error('mermaid failed to load'));
+      };
+      document.head.appendChild(s);
+    });
+  }
+  return mermaidPromise;
 }
 function decodeHtml(s) {
   return (s || '')
@@ -431,29 +448,50 @@ function renderMd(text) {
 
 let enhanceChain = Promise.resolve();
 
+function upgradeMermaidFences(container) {
+  const codes = container.querySelectorAll('pre > code.language-mermaid');
+  for (const code of codes) {
+    const pre = code.parentElement;
+    if (!pre) continue;
+    const raw = code.textContent || '';
+    const block = document.createElement('div');
+    block.className = 'mermaid-block';
+    block.dataset.raw = raw;
+    const src = document.createElement('pre');
+    src.className = 'mermaid-src';
+    src.textContent = raw;
+    block.appendChild(src);
+    pre.replaceWith(block);
+  }
+}
+
 async function enhanceMermaid(container) {
-  if (!mermaidReady) return;
-  enhanceChain = enhanceChain.then(async () => {
-    const blocks = container.querySelectorAll('.mermaid-block:not([data-done])');
-    for (const block of blocks) {
-      block.setAttribute('data-done', 'true');
-      const raw = block.dataset.raw || '';
-      try {
-        await window.mermaid.parse(raw);
-      } catch (e) {
-        block.classList.add('mermaid-invalid');
-        block.innerHTML = `<pre class="mermaid-src">${esc(raw)}</pre><div class="mermaid-notice">Diagram syntax could not be rendered</div>`;
-        continue;
+  if (!container.querySelector('.mermaid-block:not([data-done]), pre > code.language-mermaid')) return;
+  ensureMermaid().then(() => {
+    enhanceChain = enhanceChain.then(async () => {
+      if (!mermaidReady) return;
+      upgradeMermaidFences(container);
+      const blocks = container.querySelectorAll('.mermaid-block:not([data-done])');
+      for (const block of blocks) {
+        block.setAttribute('data-done', 'true');
+        const raw = block.dataset.raw || '';
+        try {
+          await window.mermaid.parse(raw);
+        } catch (e) {
+          block.classList.add('mermaid-invalid');
+          block.innerHTML = `<pre class="mermaid-src">${esc(raw)}</pre><div class="mermaid-notice">Diagram syntax could not be rendered</div>`;
+          continue;
+        }
+        try {
+          block.textContent = raw;
+          await window.mermaid.run({ nodes: [block] });
+        } catch (e) {
+          block.classList.add('mermaid-invalid');
+          block.innerHTML = `<pre class="mermaid-src">${esc(raw)}</pre><div class="mermaid-notice">Diagram syntax could not be rendered</div>`;
+        }
       }
-      try {
-        block.textContent = raw;
-        await window.mermaid.run({ nodes: [block] });
-      } catch (e) {
-        block.classList.add('mermaid-invalid');
-        block.innerHTML = `<pre class="mermaid-src">${esc(raw)}</pre><div class="mermaid-notice">Diagram syntax could not be rendered</div>`;
-      }
-    }
-  });
+    }).catch(() => {});
+  }).catch(() => {});
 }
 
 /* ---------- engagements ---------- */
@@ -641,13 +679,18 @@ async function send() {
     if (!resp.body) throw new Error('No response body');
     const reader = resp.body.getReader();
     const dec = new TextDecoder();
+    let lastPaint = 0;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       acc += dec.decode(value, { stream: true });
       if (bubble) {
-        bubble.innerHTML = renderMd(acc) + '<span style="opacity:.5">▍</span>';
-        enhanceMermaid(bubble);
+        const now = Date.now();
+        if (now - lastPaint >= 50) {
+          lastPaint = now;
+          bubble.innerHTML = renderMd(acc) + '<span style="opacity:.5">▍</span>';
+          enhanceMermaid(bubble);
+        }
         const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 120;
         if (nearBottom) chat.scrollTop = chat.scrollHeight;
       }

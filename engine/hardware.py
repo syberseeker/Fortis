@@ -14,8 +14,9 @@ import os
 import platform
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 
 @dataclass
@@ -23,6 +24,12 @@ class Hardware:
     ram_gb: float
     vram_gb: float          # 0.0 if no dedicated NVIDIA GPU detected
     has_nvidia: bool
+
+
+_HW_CACHE: Optional[Tuple[float, Hardware]] = None
+_VRAM_CACHE: Optional[Tuple[float, float]] = None
+_HW_TTL_SECONDS = 10.0
+_VRAM_TTL_SECONDS = 5.0
 
 
 def cuda_marker_exists() -> bool:
@@ -110,7 +117,7 @@ def _ram_gb() -> float:
     return 8.0  # conservative default
 
 
-def _vram_gb() -> float:
+def _probe_vram_gb() -> float:
     # 1) pynvml if installed
     try:
         import pynvml  # type: ignore
@@ -137,12 +144,28 @@ def _vram_gb() -> float:
     return 0.0
 
 
+def _vram_gb() -> float:
+    global _VRAM_CACHE
+    now = time.monotonic()
+    if _VRAM_CACHE is not None and now - _VRAM_CACHE[0] < _VRAM_TTL_SECONDS:
+        return _VRAM_CACHE[1]
+    total = _probe_vram_gb()
+    _VRAM_CACHE = (time.monotonic(), total)
+    return total
+
+
 def _has_nvidia() -> bool:
     return _vram_gb() > 0.0
 
 
 def detect() -> Hardware:
-    return Hardware(ram_gb=_ram_gb(), vram_gb=_vram_gb(), has_nvidia=_has_nvidia())
+    global _HW_CACHE
+    now = time.monotonic()
+    if _HW_CACHE is not None and now - _HW_CACHE[0] < _HW_TTL_SECONDS:
+        return _HW_CACHE[1]
+    hw = Hardware(ram_gb=_ram_gb(), vram_gb=_vram_gb(), has_nvidia=_has_nvidia())
+    _HW_CACHE = (time.monotonic(), hw)
+    return hw
 
 
 def suggest_tiers(hw: Hardware) -> Dict[str, str]:

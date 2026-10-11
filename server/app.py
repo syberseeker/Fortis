@@ -14,10 +14,12 @@ import sys
 import threading
 import webbrowser
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from core.config import settings
 from core.main import app as core_app  # FastAPI app with all core routers
@@ -43,7 +45,7 @@ class CommandRequest(BaseModel):
 @api.post("/command")
 async def command(req: CommandRequest):
     """Slash-command passthrough from the UI (also usable headless)."""
-    reply = orch.handle_command(req.text)
+    reply = await run_in_threadpool(orch.handle_command, req.text)
     if reply is None:
         raise HTTPException(400, "Not a recognized command. Try /engagements, /new-engagement, /use, /whoami, /close-engagement.")
     return {"text": reply}
@@ -148,7 +150,8 @@ async def report_save(req: dict):
     fmt = req.get("format", "docx")
     focus = req.get("focus_instructions", "")
     allow_stub = bool(req.get("allow_stub", False))
-    result = orch.generate_report_download(
+    result = await run_in_threadpool(
+        orch.generate_report_download,
         engagement_id, fmt, focus, allow_stub=allow_stub, enforce_stub_gate=True
     )
     if "error" in result:
@@ -209,6 +212,21 @@ app.include_router(api)
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(_STATIC_DIR):
     app.mount("/ui", StaticFiles(directory=_STATIC_DIR, html=True), name="ui")
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+@app.middleware("http")
+async def ui_cache_headers(request: Request, call_next):
+    path = request.url.path
+    if path == "/ui" or path.startswith("/ui/"):
+        response = await call_next(request)
+        if path.startswith("/ui/vendor/"):
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+    return await call_next(request)
 
 
 @app.get("/")

@@ -52,16 +52,17 @@ def build_context_block(engagement_id: str, query: str) -> str:
         user_hits = vectorstore.query_user_documents(engagement_id, query, settings.top_k_user_doc)
         framework_hits = vectorstore.query_frameworks(query, settings.top_k_framework)
     else:
-        from .rerank import rerank
-
         user_hits = vectorstore.query_user_documents_hybrid(
             engagement_id, query, settings.top_k_user_doc, settings.rerank_candidate_multiplier
         )
         framework_hits = vectorstore.query_frameworks_hybrid(
             query, settings.top_k_framework, settings.rerank_candidate_multiplier
         )
-        user_hits = rerank(query, user_hits, settings.top_k_user_doc)
-        framework_hits = rerank(query, framework_hits, settings.top_k_framework)
+        if settings.rag_level == "full":
+            from .rerank import rerank
+
+            user_hits = rerank(query, user_hits, settings.top_k_user_doc)
+            framework_hits = rerank(query, framework_hits, settings.top_k_framework)
 
     parts = []
     if user_hits:

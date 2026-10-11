@@ -3,6 +3,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from starlette.concurrency import run_in_threadpool
 
 from ..config import settings
 from ..ingestion import extract_text, chunk_text_enriched
@@ -49,7 +50,7 @@ async def upload_file(
         f.write(contents)
 
     try:
-        text = extract_text(save_path)
+        text = await run_in_threadpool(extract_text, save_path)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -59,9 +60,9 @@ async def upload_file(
         raise HTTPException(422, "No extractable text found in this file.")
 
     display_name = _safe_disk_filename(_clean_filename(file.filename)) or file.filename
-    chunks = chunk_text_enriched(text, display_name)
-    n_added = vectorstore.add_user_document_chunks(engagement_id, display_name, chunks)
-    report_service.invalidate_engagement_cache(engagement_id)
+    chunks = await run_in_threadpool(chunk_text_enriched, text, display_name)
+    n_added = await run_in_threadpool(vectorstore.add_user_document_chunks, engagement_id, display_name, chunks)
+    await run_in_threadpool(report_service.invalidate_engagement_cache, engagement_id)
 
     return {
         "filename": display_name,
@@ -73,13 +74,14 @@ async def upload_file(
 
 @router.get("/engagement/{engagement_id}/files")
 async def engagement_files(engagement_id: str):
-    return {"engagement_id": engagement_id, "files": vectorstore.list_engagement_files(engagement_id)}
+    files = await run_in_threadpool(vectorstore.list_engagement_files, engagement_id)
+    return {"engagement_id": engagement_id, "files": files}
 
 
 @router.delete("/engagement/{engagement_id}")
 async def clear_engagement_documents(engagement_id: str):
     """Clears uploaded documents/vectors for an engagement without deleting the
     engagement record itself (client history, past reports stay intact)."""
-    vectorstore.clear_engagement(engagement_id)
-    report_service.invalidate_engagement_cache(engagement_id)
+    await run_in_threadpool(vectorstore.clear_engagement, engagement_id)
+    await run_in_threadpool(report_service.invalidate_engagement_cache, engagement_id)
     return {"engagement_id": engagement_id, "status": "documents_cleared"}

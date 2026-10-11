@@ -18,7 +18,7 @@ import re
 import sys
 import threading
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 from core.config import settings
 
@@ -33,10 +33,38 @@ _STATE: dict = {
 _STOP_TOKENS = ["<|im_end|>", "</think>"]
 
 
+_SCAN_CACHE: Optional[Tuple[float, Optional[str]]] = None
+_SCAN_TTL_SECONDS = 5.0
+
+
+def _newest_gguf_in_models_dir() -> Optional[str]:
+    global _SCAN_CACHE
+    now = time.monotonic()
+    if _SCAN_CACHE is not None and now - _SCAN_CACHE[0] < _SCAN_TTL_SECONDS:
+        return _SCAN_CACHE[1]
+    newest: Optional[str] = None
+    try:
+        ggufs = [
+            f for f in os.listdir(settings.models_dir) if f.lower().endswith(".gguf")
+        ]
+        if ggufs:
+            name = max(
+                ggufs,
+                key=lambda f: os.path.getmtime(os.path.join(settings.models_dir, f)),
+            )
+            newest = os.path.join(settings.models_dir, name)
+    except OSError:
+        newest = None
+    _SCAN_CACHE = (time.monotonic(), newest)
+    return newest
+
+
 def current_model_path() -> Optional[str]:
     """Path of the model that should be used, or None if none is available.
     Priority: FORTIS_MODEL_PATH env var, then the model manager's selection,
-    then the newest GGUF in the models dir."""
+    then the newest GGUF in the models dir. The final directory scan is cached
+    briefly so per-message backend resolution doesn't stat the filesystem;
+    env-var and selection changes always take effect immediately."""
     env = os.getenv("FORTIS_MODEL_PATH")
     if env and os.path.isfile(env):
         return env
@@ -47,19 +75,7 @@ def current_model_path() -> Optional[str]:
             return sel
     except Exception:
         pass
-    try:
-        ggufs = [
-            f for f in os.listdir(settings.models_dir) if f.lower().endswith(".gguf")
-        ]
-        if ggufs:
-            newest = max(
-                ggufs,
-                key=lambda f: os.path.getmtime(os.path.join(settings.models_dir, f)),
-            )
-            return os.path.join(settings.models_dir, newest)
-    except OSError:
-        pass
-    return None
+    return _newest_gguf_in_models_dir()
 
 
 def model_status() -> Optional[str]:
@@ -419,6 +435,8 @@ def load_model(path: Optional[str] = None, n_ctx: Optional[int] = None) -> None:
     if n_ctx:
         settings.n_ctx = n_ctx
     with _LOCK:
+        global _SCAN_CACHE
+        _SCAN_CACHE = None
         _STATE["model"] = None
         _STATE["path"] = None
         _STATE["error"] = None
@@ -539,6 +557,8 @@ def _is_cuda_oom_error(e: Exception) -> bool:
 
 def unload() -> None:
     with _LOCK:
+        global _SCAN_CACHE
+        _SCAN_CACHE = None
         _STATE["model"] = None
         _STATE["path"] = None
         _STATE["error"] = None

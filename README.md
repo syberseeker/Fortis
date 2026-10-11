@@ -9,8 +9,8 @@ Fortis is a fully local AI cybersecurity advisory desktop application for
 security assessments, document reviews, configuration analysis, and consulting
 workflows.
 
-**Current version: 0.5.1** — see [CHANGELOG.md](CHANGELOG.md) for the full
-development history. Stable releases are tagged `v0.1.0` … `v0.5.1`.
+**Current version: 0.5.2** — see [CHANGELOG.md](CHANGELOG.md) for the full
+development history. Stable releases are tagged `v0.1.0` … `v0.5.2`.
 
 Upload policies, configurations, source code, logs, architecture documents,
 or other security evidence and interact with a locally running AI advisor

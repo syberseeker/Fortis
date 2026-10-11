@@ -5,6 +5,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .. import store, vectorstore
 from ..config import settings
@@ -54,7 +55,7 @@ async def get_engagement(engagement_id: str):
     if not engagement:
         raise HTTPException(404, "Engagement not found.")
     engagement = dict(engagement)
-    engagement["files"] = vectorstore.list_engagement_files(engagement_id)
+    engagement["files"] = await run_in_threadpool(vectorstore.list_engagement_files, engagement_id)
     return engagement
 
 
@@ -81,18 +82,11 @@ async def delete_engagement(engagement_id: str):
     return {"engagement_id": engagement_id, "status": "deleted"}
 
 
-@router.get("/{engagement_id}/export")
-async def export_engagement(engagement_id: str):
-    """Bundles the engagement's metadata, chat transcript, indexed document
-    list, and generated report files (matched by filename slug prefix) into a
-    downloadable zip archive."""
+def _build_export_bundle(engagement: dict, engagement_id: str) -> bytes:
+    """Collects chat history, document list, and report files into the zip."""
     import io
     import zipfile
     from datetime import datetime
-
-    engagement = store.get_engagement(engagement_id)
-    if not engagement:
-        raise HTTPException(404, "Engagement not found.")
 
     try:
         turns = store.get_chat_history(engagement_id)
@@ -123,9 +117,26 @@ async def export_engagement(engagement_id: str):
         for name in report_names:
             zf.write(os.path.join(settings.report_dir, name), f"reports/{name}")
 
+    return buf.getvalue()
+
+
+@router.get("/{engagement_id}/export")
+async def export_engagement(engagement_id: str):
+    """Bundles the engagement's metadata, chat transcript, indexed document
+    list, and generated report files (matched by filename slug prefix) into a
+    downloadable zip archive."""
+    from datetime import datetime
+
+    engagement = store.get_engagement(engagement_id)
+    if not engagement:
+        raise HTTPException(404, "Engagement not found.")
+
+    archive = await run_in_threadpool(_build_export_bundle, engagement, engagement_id)
+
+    slug = engagement_id.lower()
     stamp = datetime.now().strftime("%Y%m%d")
     return Response(
-        content=buf.getvalue(),
+        content=archive,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{slug}-export-{stamp}.zip"'},
     )

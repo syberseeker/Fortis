@@ -1,4 +1,3 @@
-import tempfile
 from datetime import datetime
 
 from docx import Document
@@ -6,7 +5,7 @@ from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from .schema import SecurityReport, SEVERITY_ORDER
-from .charts import render_severity_chart, render_framework_chart
+from .charts import render_severity_chart_cached, render_framework_chart_cached
 from ..structured import is_valid_mermaid
 
 SEVERITY_COLORS = {
@@ -47,15 +46,12 @@ def render_docx(report: SecurityReport, output_path: str) -> str:
     run.font.color.rgb = SEVERITY_COLORS.get(report.overall_risk_rating, RGBColor(0, 0, 0))
 
     doc.add_heading("4. Findings Overview", level=1)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        severity_path = f"{tmpdir}/severity.png"
-        framework_path = f"{tmpdir}/framework.png"
-        sev_result = render_severity_chart(report, severity_path)
-        fw_result = render_framework_chart(report, framework_path)
-        if sev_result:
-            doc.add_picture(sev_result, width=Inches(6))
-        if fw_result:
-            doc.add_picture(fw_result, width=Inches(6))
+    sev_result = render_severity_chart_cached(report)
+    fw_result = render_framework_chart_cached(report)
+    if sev_result:
+        doc.add_picture(sev_result, width=Inches(6))
+    if fw_result:
+        doc.add_picture(fw_result, width=Inches(6))
 
     sorted_findings = sorted(
         report.findings,

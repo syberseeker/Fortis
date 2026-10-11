@@ -5,6 +5,61 @@ to the current build. Each version below is tagged in git (`v0.1.0` …
 `v0.5.1`) at the commit that marks its release. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.2] — 2026-10-11
+
+### Changed
+- **Blocking work is off the event loop.** Sentence-transformers encoding,
+  ChromaDB queries, BM25 rebuilds, PDF/XLSX parsing, SQLite persistence, and
+  zip-export building now run in Starlette's worker threads. The single
+  uvicorn event loop no longer stalls report-progress polling, `/health`, or
+  a second request while an upload or report is in flight.
+- **Per-message filesystem hits removed from inference.** With
+  `FORTIS_LLM_BACKEND=auto`, every chat call previously listed the models
+  directory and read the selection state file; `_resolve()` now
+  short-circuits to the loaded engine, and the fallback directory scan
+  behind `current_model_path()` is TTL-cached (5 s, invalidated on
+  load/unload). Hardware detection and total-VRAM probes are TTL-cached
+  (10 s / 5 s; free VRAM stays uncached), so the model dialog and `/health`
+  stop re-spawning `nvidia-smi` on every poll.
+- **Cross-encoder reranking is now opt-in at `RAG_LEVEL=full`.** `standard`
+  retrieves hybrid dense+BM25 candidates at the same expanded width and
+  truncates in fusion order without the cross-encoder — a deliberate
+  quality/latency trade; set `full` to rerank.
+- **BM25 updates incrementally.** Uploading a document appends to the cached
+  index (copy-on-write under the lock, reusing the tokenized corpus) instead
+  of invalidating the whole engagement scope for a full rebuild on every
+  upload; any failure falls back to the old mark-dirty path.
+- **Report pipeline does one Chroma round-trip per file.** Chunks are
+  fetched once and passed through the flat / map-reduce paths instead of
+  re-fetched (three full-collection gets per file → one). The assembled
+  framework reference block (five probe queries) and the mapping-validation
+  corpus are cached per process with a 300 s TTL, invalidated when the
+  corpus is reseeded or replaced by a verbatim document. The report-cache
+  DDL runs once per database path instead of on every cache operation.
+- **Charts render once per report, not per format.** DOCX, PPTX, and PDF
+  reuse cached PNGs keyed by report signature (six matplotlib renders → two
+  when exporting all three formats); cache lives in a pid-scoped temp
+  directory and is cleaned up at exit.
+- **The chat UI starts lighter.** Mermaid (3.5 MB) is no longer loaded
+  synchronously in `<head>` — it is injected on demand when a message
+  contains a diagram (strict security level unchanged), streaming
+  re-renders are coalesced to ~50 ms with a final full render, and the logo
+  is recompressed 715 KB → 31 KB with a new 32 px favicon. `/ui/vendor/*`
+  responses get `Cache-Control: public, max-age=86400`, index.html
+  revalidates with `no-cache`, and GZipMiddleware compresses vendor bundles
+  on the wire without breaking streamed chat responses.
+
+### Fixed
+- The BM25 fallback path taken when an incremental index update fails
+  crashed with `NameError` (missing module logger), which could 500 the
+  upload and leave the index silently stale; the fallback now marks the
+  index dirty and logs a warning as intended.
+
+### Added
+- 14 offline regression tests locking the perf invariants (threadpool
+  offload for chat/upload/engagements, TTL caches for hardware/VRAM/model
+  path, report and chart caches, DDL-once) — suite grew 262 → 276.
+
 ## [0.5.1] — 2026-09-25
 
 ### Fixed

@@ -33,6 +33,12 @@ def _resolve() -> str:
     if _ACTIVE_BACKEND != "auto":
         return _ACTIVE_BACKEND
     try:
+        from engine import llama_engine
+        if llama_engine._STATE.get("model") is not None:
+            return "llama"
+    except Exception:
+        pass
+    try:
         from engine.llama_engine import current_model_path
         if current_model_path():
             return "llama"

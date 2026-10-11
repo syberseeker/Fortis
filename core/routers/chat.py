@@ -3,6 +3,7 @@ from typing import List, Dict, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .. import rag, store
 from .. import report_intent as ri
@@ -33,8 +34,8 @@ async def _persist_turn(engagement_id: str, user_text: str, assistant_text: str)
     """Best-effort persistence of a chat turn; a failed write must never break
     the chat reply itself."""
     try:
-        store.append_chat_message(engagement_id, "user", user_text)
-        store.append_chat_message(engagement_id, "assistant", assistant_text)
+        await run_in_threadpool(store.append_chat_message, engagement_id, "user", user_text)
+        await run_in_threadpool(store.append_chat_message, engagement_id, "assistant", assistant_text)
     except Exception:
         pass
 
@@ -42,14 +43,14 @@ async def _persist_turn(engagement_id: str, user_text: str, assistant_text: str)
 async def run_structured_turn(engagement_id: str, message: str, history, intent: str, role: Optional[str] = None) -> str:
     if role is not None and role not in ROLE_PRESETS:
         role = None
-    messages = rag.build_chat_messages(engagement_id, message, history, role=role)
+    messages = await run_in_threadpool(rag.build_chat_messages, engagement_id, message, history, role=role)
     messages[-1]["content"] += "\n\n" + FORMAT_INSTRUCTIONS[intent]
     reply = await chat(messages)
     
     valid = reply_has_valid_diagram(reply) if intent == "diagram" else is_valid_gfm_table(reply)
     if not valid:
         repair_history = history[-12:] + [{"role": "assistant", "content": reply}]
-        messages = rag.build_chat_messages(engagement_id, REPAIR_INSTRUCTIONS[intent], repair_history, role=role)
+        messages = await run_in_threadpool(rag.build_chat_messages, engagement_id, REPAIR_INSTRUCTIONS[intent], repair_history, role=role)
         messages[-1]["content"] += "\n\nOriginal request: " + message
         reply = await chat(messages)
     
@@ -84,10 +85,11 @@ async def chat_endpoint(req: ChatRequest):
         reply = await run_structured_turn(req.engagement_id, req.message, req.history or [], intent, role)
         await _persist_turn(req.engagement_id, req.message, reply)
         return {"reply": reply}
-    messages = rag.build_chat_messages(req.engagement_id, req.message, req.history, role=role, retrieval_query=retrieval_query)
+    messages = await run_in_threadpool(rag.build_chat_messages, req.engagement_id, req.message, req.history, role=role, retrieval_query=retrieval_query)
     reply = await chat(messages)
     if guardrail.is_offtopic_refusal(reply):
-        messages = rag.build_chat_messages(
+        messages = await run_in_threadpool(
+            rag.build_chat_messages,
             req.engagement_id, guardrail.forced_answer_prompt(req.message), req.history, role=role, retrieval_query=retrieval_query
         )
         reply = await chat(messages)
@@ -133,7 +135,7 @@ async def chat_stream_endpoint(req: ChatRequest):
         async def generator():
             yield reply
         return StreamingResponse(generator(), media_type="text/plain")
-    messages = rag.build_chat_messages(req.engagement_id, req.message, req.history, role=role, retrieval_query=retrieval_query)
+    messages = await run_in_threadpool(rag.build_chat_messages, req.engagement_id, req.message, req.history, role=role, retrieval_query=retrieval_query)
 
     async def generator():
         acc = []
@@ -142,7 +144,8 @@ async def chat_stream_endpoint(req: ChatRequest):
             yield token
         full = "".join(acc)
         if guardrail.is_offtopic_refusal(full):
-            retry = rag.build_chat_messages(
+            retry = await run_in_threadpool(
+                rag.build_chat_messages,
                 req.engagement_id, guardrail.forced_answer_prompt(req.message), req.history, role=role, retrieval_query=retrieval_query
             )
             async for token in chat_stream(retry):
@@ -157,7 +160,7 @@ async def chat_stream_endpoint(req: ChatRequest):
 async def chat_history(engagement_id: str, limit: int = 500):
     _require_engagement(engagement_id)
     try:
-        turns = store.get_chat_history(engagement_id, limit=limit)
+        turns = await run_in_threadpool(store.get_chat_history, engagement_id, limit=limit)
     except (KeyError, ValueError):
         raise HTTPException(404, f"Engagement '{store.clean(engagement_id)}' not found.")
     return {"engagement_id": store.clean(engagement_id), "turns": turns}

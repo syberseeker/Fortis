@@ -15,6 +15,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 import uuid
 
 from . import report_intent, store, vectorstore
@@ -72,16 +74,26 @@ CREATE INDEX IF NOT EXISTS idx_report_cache_engagement
 """
 
 
+_DDL_DONE: set = set()
+_DDL_LOCK = threading.Lock()
+
+
 def ensure_cache_table() -> None:
     import sqlite3
 
-    conn = sqlite3.connect(settings.db_path, timeout=15)
+    db_path = settings.db_path
+    with _DDL_LOCK:
+        if db_path in _DDL_DONE:
+            return
+    conn = sqlite3.connect(db_path, timeout=15)
     try:
         conn.execute("PRAGMA foreign_keys = ON")
         conn.executescript(_SCHEMA_TABLE)
         conn.commit()
     finally:
         conn.close()
+    with _DDL_LOCK:
+        _DDL_DONE.add(db_path)
 
 
 def _cache_get(engagement_id: str, cache_key: str):
@@ -176,7 +188,26 @@ _FRAMEWORK_ALIASES = {
 }
 
 
+_KNOWN_PAIRS_TTL_SECONDS = 300.0
+_KNOWN_PAIRS_CACHE = None
+_KNOWN_PAIRS_LOCK = threading.Lock()
+
+
+def invalidate_known_framework_pairs_cache() -> None:
+    global _KNOWN_PAIRS_CACHE
+    with _KNOWN_PAIRS_LOCK:
+        _KNOWN_PAIRS_CACHE = None
+
+
 def _known_framework_pairs() -> set:
+    global _KNOWN_PAIRS_CACHE
+    now = time.monotonic()
+    with _KNOWN_PAIRS_LOCK:
+        if _KNOWN_PAIRS_CACHE is not None:
+            cached_at, pairs = _KNOWN_PAIRS_CACHE
+            if now - cached_at < _KNOWN_PAIRS_TTL_SECONDS:
+                return set(pairs)
+
     pairs = set()
     try:
         col = vectorstore.framework_collection()
@@ -188,6 +219,10 @@ def _known_framework_pairs() -> set:
                 pairs.add((str(fw), str(cid)))
     except Exception:
         logger.warning("Framework corpus unavailable for mapping validation", exc_info=True)
+
+    if pairs:
+        with _KNOWN_PAIRS_LOCK:
+            _KNOWN_PAIRS_CACHE = (time.monotonic(), frozenset(pairs))
     return pairs
 
 

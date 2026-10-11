@@ -132,5 +132,33 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
         return _encode(texts, _load_model("cpu"))
 
 
+def _embed_query_uncached(text: str) -> List[float]:
+    if _BACKEND == "hash-stub":
+        return _hash_vector(text)
+
+    model = _get_model()
+    try:
+        return _encode([text], model)[0]
+    except Exception:
+        if _resolved_device != "cuda":
+            raise
+        _demote_to_cpu()
+        logger.warning(
+            "CUDA encoding failed; falling back to CPU embeddings", exc_info=True
+        )
+        return _encode([text], _load_model("cpu"))[0]
+
+
+@lru_cache(maxsize=256)
+def _embed_query_cached(text: str) -> tuple:
+    return tuple(_embed_query_uncached(text))
+
+
+def clear_query_cache() -> None:
+    """Empties the query-embedding LRU; called when the framework corpus
+    changes so retrieval can't serve vectors tied to stale corpus state."""
+    _embed_query_cached.cache_clear()
+
+
 def embed_query(text: str) -> List[float]:
-    return embed_texts([text])[0]
+    return list(_embed_query_cached(text))

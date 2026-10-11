@@ -30,6 +30,45 @@ def mark_dirty(collection: str) -> None:
                 state["dirty"] = True
 
 
+def update(collection: str, scope: str, ids: list, metadatas: list, documents: list) -> None:
+    """Appends entries to a cached index in place of a full rebuild; falls back
+    to mark-dirty semantics whenever the cached state isn't cleanly extendable
+    (missing, dirty, or built without a scorer). Copy-on-write: a new state
+    dict is swapped in under the lock so concurrent search() readers never see
+    a partially-updated corpus."""
+    if not documents:
+        return
+    key = (collection, scope)
+    with _LOCK:
+        state = _INDEXES.get(key)
+        if state is None or state["dirty"] or state["bm25"] is None:
+            if state is not None:
+                state["dirty"] = True
+            return
+        old_len = len(state["documents"])
+        ids = state["ids"] + list(ids)
+        metadatas = state["metadatas"] + list(metadatas)
+        documents = state["documents"] + list(documents)
+        old_tokens = state.get("tokens")
+        if old_tokens is None or len(old_tokens) != old_len:
+            old_tokens = [tokenize(t) for t in state["documents"]]
+        corpus = list(old_tokens) + [tokenize(t) for t in documents[old_len:]]
+        bm25 = BM25Okapi(corpus) if corpus and any(corpus) else None
+        if bm25 is None:
+            state["dirty"] = True
+            return
+        new_state = {
+            "ids": ids,
+            "metadatas": metadatas,
+            "documents": documents,
+            "tokens": corpus,
+            "bm25": bm25,
+            "dirty": False,
+        }
+        _INDEXES[key] = new_state
+        _INDEXES.move_to_end(key)
+
+
 def _ensure_index(collection: str, scope: str, getter) -> dict:
     key = (collection, scope)
     with _LOCK:
@@ -59,6 +98,7 @@ def _ensure_index(collection: str, scope: str, getter) -> dict:
         "ids": ids,
         "metadatas": metadatas,
         "documents": documents,
+        "tokens": corpus,
         "bm25": bm25,
         "dirty": False,
     }

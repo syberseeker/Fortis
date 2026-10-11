@@ -23,7 +23,9 @@ router) don't need to know or care which path ran.
 """
 import json
 import logging
-from typing import List, Dict, Tuple
+import threading
+import time
+from typing import Dict, List, Optional, Tuple
 
 from . import vectorstore, store, progress
 from .config import settings
@@ -41,6 +43,10 @@ FRAMEWORK_PROBE_QUERIES = [
     "network exposure firewall port service",
     "logging monitoring incident response",
 ]
+
+_FRAMEWORK_CONTEXT_TTL_SECONDS = 300.0
+_FRAMEWORK_CONTEXT_CACHE: Optional[Tuple[float, str]] = None
+_FRAMEWORK_CONTEXT_LOCK = threading.Lock()
 
 # ---- Prompts ----------------------------------------------------------
 
@@ -175,7 +181,7 @@ def _batch_chunks(chunks: List[str], max_tokens: int) -> List[List[str]]:
     return batches
 
 
-def _framework_context_block() -> str:
+def _build_framework_context_block() -> str:
     seen: Dict[Tuple[str, str], Dict] = {}
     for q in FRAMEWORK_PROBE_QUERIES:
         for h in vectorstore.query_frameworks(q, top_k=2):
@@ -190,6 +196,26 @@ def _framework_context_block() -> str:
         suffix = f" ({version})" if version else ""
         parts.append(f"[{tag}{suffix}] {h['text']}")
     return "\n".join(parts)
+
+
+def _framework_context_block() -> str:
+    global _FRAMEWORK_CONTEXT_CACHE
+    now = time.monotonic()
+    with _FRAMEWORK_CONTEXT_LOCK:
+        if _FRAMEWORK_CONTEXT_CACHE is not None:
+            cached_at, block = _FRAMEWORK_CONTEXT_CACHE
+            if now - cached_at < _FRAMEWORK_CONTEXT_TTL_SECONDS:
+                return block
+    block = _build_framework_context_block()
+    with _FRAMEWORK_CONTEXT_LOCK:
+        _FRAMEWORK_CONTEXT_CACHE = (time.monotonic(), block)
+    return block
+
+
+def invalidate_framework_context_cache() -> None:
+    global _FRAMEWORK_CONTEXT_CACHE
+    with _FRAMEWORK_CONTEXT_LOCK:
+        _FRAMEWORK_CONTEXT_CACHE = None
 
 
 def _engagement_header(engagement_id: str) -> str:
@@ -255,11 +281,14 @@ def _parse_json_response(text: str) -> Dict:
 
 # ---- Flat path (small engagements) --------------------------------------
 
-async def _generate_flat(engagement_id: str, focus_instructions: str) -> SecurityReport:
-    filenames = vectorstore.list_engagement_files(engagement_id)
+async def _generate_flat(
+    docs: List[Tuple[str, List[str]]],
+    engagement_id: str,
+    focus_instructions: str,
+) -> SecurityReport:
     parts = ["=== Uploaded document excerpts ==="]
-    for filename in filenames:
-        for i, chunk in enumerate(vectorstore.get_document_chunks(engagement_id, filename)):
+    for filename, chunks in docs:
+        for i, chunk in enumerate(chunks):
             parts.append(f"[{filename} — chunk {i}]\n{chunk}")
 
     user_content = (
@@ -283,13 +312,29 @@ def _effective_batch_tokens() -> int:
     return settings.map_batch_tokens
 
 
-def _plan_map_batches(engagement_id: str, filenames: List[str], max_tokens: int) -> List[Tuple[str, List[List[str]]]]:
+def _plan_map_batches(
+    docs_or_engagement_id,
+    max_tokens_or_filenames=None,
+    max_tokens: Optional[int] = None,
+) -> List[Tuple[str, List[List[str]]]]:
     """Pre-plans every file's batches once so progress totals are exact and
-    slow backends can use fewer, larger LLM calls."""
+    slow backends can use fewer, larger LLM calls. The primary form takes the
+    entry point's pre-fetched (filename, chunks) docs so chunk retrieval
+    happens once per report; the legacy (engagement_id, filenames, max_tokens)
+    form fetches chunks itself."""
+    if isinstance(docs_or_engagement_id, str):
+        engagement_id = docs_or_engagement_id
+        filenames = list(max_tokens_or_filenames or [])
+        token_limit = max_tokens
+        per_file = [(filename, vectorstore.get_document_chunks(engagement_id, filename))
+                    for filename in filenames]
+    else:
+        per_file = [(filename, chunks) for filename, chunks in docs_or_engagement_id]
+        token_limit = max_tokens_or_filenames
+
     plan: List[Tuple[str, List[List[str]]]] = []
-    for filename in filenames:
-        chunks = vectorstore.get_document_chunks(engagement_id, filename)
-        plan.append((filename, _batch_chunks(chunks, max_tokens)))
+    for filename, chunks in per_file:
+        plan.append((filename, _batch_chunks(chunks, token_limit)))
     return plan
 
 async def _map_document(filename: str, batches: List[List[str]]) -> Tuple[List[Dict], List[str]]:
@@ -308,13 +353,16 @@ async def _map_document(filename: str, batches: List[List[str]]) -> Tuple[List[D
     return all_findings, all_key_points
 
 
-async def _generate_map_reduce(engagement_id: str, focus_instructions: str) -> SecurityReport:
-    filenames = vectorstore.list_engagement_files(engagement_id)
-    plan = _plan_map_batches(engagement_id, filenames, _effective_batch_tokens())
+async def _generate_map_reduce(
+    docs: List[Tuple[str, List[str]]],
+    engagement_id: str,
+    focus_instructions: str,
+) -> SecurityReport:
+    plan = _plan_map_batches(docs, _effective_batch_tokens())
 
     progress.start(
         total=sum(len(batches) for _, batches in plan) + 1,
-        detail=f"{sum(len(b) for _, b in plan)} batches across {len(filenames)} file(s)",
+        detail=f"{sum(len(b) for _, b in plan)} batches across {len(docs)} file(s)",
     )
 
     all_candidate_findings: List[Dict] = []
@@ -359,10 +407,12 @@ async def _generate_security_report_inner(engagement_id: str, focus_instructions
     if not filenames:
         raise ValueError("No documents have been uploaded for this engagement yet.")
 
-    total_tokens = 0
-    for filename in filenames:
-        for chunk in vectorstore.get_document_chunks(engagement_id, filename):
-            total_tokens += _token_count(chunk)
+    docs: List[Tuple[str, List[str]]] = [
+        (filename, vectorstore.get_document_chunks(engagement_id, filename))
+        for filename in filenames
+    ]
+
+    total_tokens = sum(_token_count(chunk) for _, chunks in docs for chunk in chunks)
 
     if total_tokens <= settings.hierarchical_threshold_tokens:
         logger.info(
@@ -370,10 +420,10 @@ async def _generate_security_report_inner(engagement_id: str, focus_instructions
             engagement_id, total_tokens,
         )
         progress.start(total=1, detail="Single-pass analysis")
-        return await _generate_flat(engagement_id, focus_instructions)
+        return await _generate_flat(docs, engagement_id, focus_instructions)
 
     logger.info(
         "Engagement %s: %d tokens > threshold, using map-reduce analysis pipeline",
         engagement_id, total_tokens,
     )
-    return await _generate_map_reduce(engagement_id, focus_instructions)
+    return await _generate_map_reduce(docs, engagement_id, focus_instructions)
