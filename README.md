@@ -59,7 +59,7 @@ attach a document (📎) → chat.
 | 0.8B | ~1.0 GB | anything |
 | 2B | ~2.7 GB | 8 GB RAM |
 | 4B *(default)* | ~3.4 GB | 4 GB+ VRAM or 16 GB RAM |
-| 9B | ~6.6 GB | 8 GB+ VRAM |
+| 8B | ~3.9 GB | 5.5 GB+ VRAM |
 
 ## RAG modes
 
@@ -138,6 +138,7 @@ there are no telemetry or cloud calls.
 
 | Version | Date | Highlights |
 |---|---|---|
+| 0.5.2 | 2026-10-11 | Performance pass: non-blocking event loop, cached retrieval/report hot paths, incremental BM25, rerank opt-in at `full` |
 | 0.5.1 | 2026-09-25 | Model-load failures show the real cause and retry with reduced context; tests no longer overwrite the model selection |
 | 0.5.0 | 2026-09-25 | Analyze once / render N formats; framework-mapping validation; engagement export; CORS removed; CI |
 | 0.4.1 | 2026-09-25 | Fix `UnboundLocalError` crash on every llama-backend chat call |
