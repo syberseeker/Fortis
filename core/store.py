@@ -263,7 +263,7 @@ def get_chat_history(engagement_id: str, limit: int = CHAT_HISTORY_CAP) -> List[
         raise KeyError(f"Engagement '{engagement_id}' not found.")
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT role, content, created_at FROM ("
+            "SELECT id, role, content, created_at FROM ("
             "  SELECT id, role, content, created_at FROM chat_messages"
             "  WHERE engagement_id = ? ORDER BY id DESC LIMIT ?"
             ") ORDER BY id ASC",

@@ -78,6 +78,20 @@ button:focus-visible, .eng-item:focus-visible, #input:focus-visible, select:focu
 #topbar .eng-title { font-weight: 600; }
 #topbar .spacer { flex: 1; }
 #model-btn { font-size: 12px; }
+#export-chat-wrap { position: relative; }
+#export-chat-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 30; min-width: 96px;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+  padding: 4px; display: none; flex-direction: column; gap: 2px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+#export-chat-menu[aria-hidden="false"] { display: flex; }
+#export-chat-menu button {
+  background: transparent; border: none; color: var(--text); text-align: left;
+  padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: var(--font-mono);
+  white-space: nowrap;
+}
+#export-chat-menu button:hover, #export-chat-menu button:focus-visible { background: var(--bg2); border-color: var(--accent2); color: var(--accent); }
 #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); display: inline-block; }
 #status-dot.ok { background: var(--ok); } #status-dot.err { background: var(--err); }
 #chat { flex: 1; overflow-y: auto; padding: var(--space-5); }
@@ -102,6 +116,16 @@ button:focus-visible, .eng-item:focus-visible, #input:focus-visible, select:focu
 .bubble tbody tr:hover { background: rgba(91,143,196,.06); }
 .bubble a { color: var(--accent); }
 .bubble blockquote { border-left: 3px solid var(--accent2); padding-left: 10px; color: var(--muted); margin: 8px 0; }
+.msg-assistant-actions { display: flex; gap: 6px; margin-top: 6px; opacity: 0; transition: opacity .12s; }
+.msg.assistant:hover .msg-assistant-actions, .msg.assistant:focus-within .msg-assistant-actions { opacity: 1; }
+.msg.streaming .msg-assistant-actions { display: none; }
+.msg-assistant-actions button {
+  padding: 3px 8px; font-size: 11px; border-radius: 5px; background: var(--bg);
+  color: var(--muted); border: 1px solid var(--border); font-family: var(--font-mono);
+}
+.msg-assistant-actions button:hover:not(:disabled) { background: var(--bg3); border-color: var(--accent2); color: var(--accent); }
+.msg-assistant-actions button:disabled { cursor: default; opacity: .7; }
+@media (prefers-reduced-motion: reduce) { .msg-assistant-actions { transition: none; } }
 /* markdown polish */
 .bubble p { margin: 8px 0; }
 .bubble h1, .bubble h2, .bubble h3, .bubble h4, .bubble h5, .bubble h6 { color: var(--text); font-weight: 600; line-height: 1.3; margin: 18px 0 8px; }
@@ -221,6 +245,10 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18
     <span id="status-dot"></span>
     <span class="eng-title" id="eng-title">No engagement selected</span>
     <span class="spacer"></span>
+    <span id="export-chat-wrap" style="display:none">
+      <button id="export-chat-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="export-chat-menu" title="Export the full conversation">Export chat ▾</button>
+      <div id="export-chat-menu" role="menu" aria-label="Export conversation format" aria-hidden="true"></div>
+    </span>
     <button id="clear-chat-btn" title="Delete the saved chat history for this engagement" style="display:none">Clear chat</button>
     <button id="model-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010-2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Model</button>
   </div>
@@ -586,7 +614,7 @@ async function restoreChatHistory() {
     const turns = h.turns || [];
     restoreEmptyState();
     history = turns.map((t) => ({ role: t.role, content: t.content }));
-    for (const t of turns) addMsg(t.role, t.content);
+    for (const t of turns) addMsg(t.role, t.content, '', t.id);
     if (turns.length) {
       const c = $('chat');
       c.scrollTop = c.scrollHeight;
@@ -609,10 +637,11 @@ function updateComposerState() {
   $('input').style.opacity = activeId ? '1' : '.5';
   $('input').style.pointerEvents = activeId ? 'auto' : 'none';
   $('clear-chat-btn').style.display = activeId ? '' : 'none';
+  $('export-chat-wrap').style.display = activeId ? '' : 'none';
 }
 
 /* ---------- chat ---------- */
-function addMsg(role, text, cls = '') {
+function addMsg(role, text, cls = '', turnId = null) {
   const empty = $('empty');
   if (empty) empty.remove();
   const wrap = document.createElement('div');
@@ -621,7 +650,11 @@ function addMsg(role, text, cls = '') {
     <div class="bubble ${cls}"></div>`;
   const bubbleEl = wrap.querySelector('.bubble');
   bubbleEl.innerHTML = role === 'user' ? esc(text).replace(/\n/g, '<br>') : renderMd(text);
-  if (role === 'assistant') enhanceMermaid(bubbleEl);
+  if (role === 'assistant') {
+    enhanceMermaid(bubbleEl);
+    if (turnId !== null && turnId !== undefined) bubbleEl.dataset.turnId = String(turnId);
+    wrap.appendChild(buildExportRow(bubbleEl));
+  }
   $('chat-inner').appendChild(wrap);
   $('chat').scrollTop = $('chat').scrollHeight;
   return wrap.querySelector('.bubble');
@@ -667,6 +700,7 @@ async function send() {
   if (looksLikeReportRequest(text)) startReportProgressPoll();
   status('Thinking…');
   const bubble = addMsg('assistant', '…');
+  if (bubble) bubble.parentElement.classList.add('streaming');
   let acc = '';
   const chat = $('chat');
 
@@ -695,7 +729,11 @@ async function send() {
         if (nearBottom) chat.scrollTop = chat.scrollHeight;
       }
     }
-    if (bubble) { bubble.innerHTML = renderMd(acc); enhanceMermaid(bubble); }
+    if (bubble) {
+      bubble.innerHTML = renderMd(acc);
+      bubble.parentElement.classList.remove('streaming');
+      enhanceMermaid(bubble);
+    }
     const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 120;
     if (nearBottom) chat.scrollTop = chat.scrollHeight;
     history.push({ role: 'user', content: text });
@@ -717,12 +755,125 @@ async function send() {
     }
     status('');
   } catch (e) {
-    if (bubble) { bubble.innerHTML = renderMd('⚠️ ' + (e.message || 'Request failed')); enhanceMermaid(bubble); }
+    if (bubble) {
+      bubble.innerHTML = renderMd('⚠️ ' + (e.message || 'Request failed'));
+      bubble.parentElement.classList.remove('streaming');
+      enhanceMermaid(bubble);
+    }
     status('Check that a model is loaded (open Model).', true);
   }
   busy = false;
   updateComposerState();
 }
+
+/* ---------- export ---------- */
+const EXPORT_FORMATS = [
+  { id: 'md', label: 'md', name: 'Markdown' },
+  { id: 'docx', label: 'docx', name: 'Word' },
+  { id: 'pdf', label: 'pdf', name: 'PDF' },
+  { id: 'pptx', label: 'pptx', name: 'PowerPoint' },
+];
+
+function buildExportRow(bubbleEl) {
+  const row = document.createElement('div');
+  row.className = 'msg-assistant-actions';
+  for (const f of EXPORT_FORMATS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = f.label;
+    b.dataset.format = f.id;
+    b.title = 'Export this reply as ' + f.name;
+    b.setAttribute('aria-label', 'Export reply as ' + f.name);
+    b.onclick = () => {
+      const body = { engagement_id: activeId, format: f.id };
+      const turnId = bubbleEl ? bubbleEl.dataset.turnId : '';
+      if (turnId) body.message_id = Number(turnId);
+      else body.latest_assistant = true;
+      runChatExport(body, b);
+    };
+    row.appendChild(b);
+  }
+  return row;
+}
+
+async function runChatExport(body, btn) {
+  if (!activeId) { status('Create an engagement first (sidebar → + New engagement).', true); return; }
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+  try {
+    const r = await api('/chat/export', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    triggerDownload(r.download_url, r.filename);
+    const n = Number(r.message_count) || 0;
+    status(`Exported ${r.filename} (${n} message${n === 1 ? '' : 's'}).`);
+  } catch (e) {
+    status('Export failed: ' + e.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+function triggerDownload(url, filename) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || '';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 1000);
+}
+
+const exportChatBtn = $('export-chat-btn');
+const exportChatMenu = $('export-chat-menu');
+const exportChatWrap = $('export-chat-wrap');
+
+function setChatMenuOpen(open) {
+  exportChatMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
+  exportChatBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    const first = exportChatMenu.querySelector('button');
+    if (first) first.focus();
+  }
+}
+
+for (const f of EXPORT_FORMATS) {
+  const mb = document.createElement('button');
+  mb.type = 'button';
+  mb.setAttribute('role', 'menuitem');
+  mb.textContent = f.label;
+  mb.title = 'Export the full conversation as ' + f.name;
+  mb.setAttribute('aria-label', 'Export chat as ' + f.name);
+  mb.onclick = () => {
+    setChatMenuOpen(false);
+    runChatExport({ engagement_id: activeId, format: f.id, transcript: true }, mb);
+  };
+  exportChatMenu.appendChild(mb);
+}
+
+exportChatBtn.onclick = () => {
+  setChatMenuOpen(exportChatMenu.getAttribute('aria-hidden') === 'true');
+};
+exportChatBtn.onkeydown = (ev) => {
+  if (ev.key === 'ArrowDown') { ev.preventDefault(); setChatMenuOpen(true); }
+};
+exportChatMenu.onkeydown = (ev) => {
+  if (ev.key === 'Escape') { ev.preventDefault(); setChatMenuOpen(false); exportChatBtn.focus(); return; }
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    const items = Array.from(exportChatMenu.querySelectorAll('button'));
+    if (!items.length) return;
+    let idx = items.indexOf(document.activeElement);
+    idx = ev.key === 'ArrowDown' ? (idx + 1) % items.length : (idx - 1 + items.length) % items.length;
+    items[idx].focus();
+  }
+};
+document.addEventListener('click', (ev) => {
+  if (exportChatMenu.getAttribute('aria-hidden') === 'false' && !exportChatWrap.contains(ev.target)) {
+    setChatMenuOpen(false);
+  }
+});
 
 /* ---------- attachments ---------- */
 $('btn-attach').onclick = () => $('file-input').click();

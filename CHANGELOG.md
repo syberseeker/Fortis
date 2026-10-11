@@ -2,8 +2,43 @@
 
 All notable changes to Fortis, traced from the initial commit (2026-09-21)
 to the current build. Each version below is tagged in git (`v0.1.0` …
-`v0.5.1`) at the commit that marks its release. Format loosely follows
+`v0.6.0`) at the commit that marks its release. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
+
+## [0.6.0] — 2026-10-11
+
+### Added
+- **Chat output export.** Any assistant reply — or the entire conversation —
+  can now be exported as Markdown, DOCX, PDF, or PPTX. Hovering a reply
+  shows a per-format export row; the top-bar **Export chat** menu renders
+  the full transcript (composed as Q&A sections: `### User` / `### Fortis`
+  separated by `---`) with keyboard/ARIA support. Rendering is deterministic
+  code, never the LLM: markdown-it-py block parsing feeds python-docx
+  (styled headings, list styles, native tables, Mono code), reportlab
+  (escaped text, grid tables, courier code), and python-pptx (one slide per
+  top-level heading, native tables) — markup such as `<script>` in a reply
+  exports as literal text, never live markup.
+- **`POST /chat/export`** resolves the export source: a specific stored turn
+  by `message_id` (engagement-scoped), the latest assistant reply
+  (`latest_assistant`, also the default), or the full transcript. Files are
+  written to the reports folder and served through the existing
+  `/report/download/` route (`.md` now served as `text/markdown`).
+- `GET /chat/history/{engagement_id}` now includes each stored turn's `id`,
+  which the UI uses to target per-message exports.
+- 19 offline regression tests for the renderers, export endpoint contract,
+  404/400 paths, escaping, and the hardening below — suite grew 276 → 295.
+
+### Hardened
+- Transcript exports cannot be forged: heading and horizontal-rule lines
+  inside a turn are escaped and dangling code fences are closed, so a
+  prompt-influenced reply cannot inject fake `### User` sections into an
+  exported Q&A artifact.
+- Exports are bounded: markdown over 1 MB is refused with an HTTP 400 and
+  guidance, and tables are capped at 200 rows × 12 columns with a
+  truncation marker, so pathological replies cannot produce runaway files
+  or renderer memory blowups.
+- A failed render no longer leaves a partial file behind, and downloads
+  now send `X-Content-Type-Options: nosniff`.
 
 ## [0.5.2] — 2026-10-11
 

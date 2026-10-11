@@ -16,6 +16,7 @@ def _media_type_for(fmt: str) -> str:
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "pdf": "application/pdf",
+        "md": "text/markdown; charset=utf-8",
     }.get(fmt, "application/octet-stream")
 
 
@@ -65,4 +66,9 @@ async def download_report(filename: str):
         raise HTTPException(404, "Report not found. Generate it first via /report/generate.")
 
     ext = filename.rsplit(".", 1)[-1]
-    return FileResponse(path, media_type=_media_type_for(ext), filename=filename)
+    return FileResponse(
+        path,
+        media_type=_media_type_for(ext),
+        filename=filename,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
