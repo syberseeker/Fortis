@@ -9,8 +9,8 @@ Fortis is a fully local AI cybersecurity advisory desktop application for
 security assessments, document reviews, configuration analysis, and consulting
 workflows.
 
-**Current version: 0.6.0** — see [CHANGELOG.md](CHANGELOG.md) for the full
-development history. Stable releases are tagged `v0.1.0` … `v0.6.0`.
+**Current version: 0.6.1** — see [CHANGELOG.md](CHANGELOG.md) for the full
+development history. Stable releases are tagged `v0.1.0` … `v0.6.1`.
 
 Upload policies, configurations, source code, logs, architecture documents,
 or other security evidence and interact with a locally running AI advisor
@@ -139,6 +139,7 @@ there are no telemetry or cloud calls.
 
 | Version | Date | Highlights |
 |---|---|---|
+| 0.6.1 | 2026-10-19 | Evidence-grounding instrumentation: retrieval provenance + sources payload, chunk span metadata, seed pinning, usage capture, unified framework aliases |
 | 0.6.0 | 2026-10-11 | Chat replies and transcripts export to md/docx/pdf/pptx; hardened against forged transcripts and oversized exports |
 | 0.5.2 | 2026-10-11 | Performance pass: non-blocking event loop, cached retrieval/report hot paths, incremental BM25, rerank opt-in at `full` |
 | 0.5.1 | 2026-09-25 | Model-load failures show the real cause and retry with reduced context; tests no longer overwrite the model selection |

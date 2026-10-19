@@ -2,10 +2,10 @@
 
 All notable changes to Fortis, traced from the initial commit (2026-09-21)
 to the current build. Each version below is tagged in git (`v0.1.0` …
-`v0.6.0`) at the commit that marks its release. Format loosely follows
+`v0.6.1`) at the commit that marks its release. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.6.1] — 2026-10-19
 
 ### Added
 - **Evaluation instrumentation for evidence grounding** — groundwork for
