@@ -61,6 +61,15 @@ def _retrieve_hits(
     if settings.rag_level == "basic":
         user_hits = vectorstore.query_user_documents(engagement_id, query, tk_user)
         framework_hits = vectorstore.query_frameworks(query, tk_fw)
+    elif settings.rag_level == "full":
+        from .rerank import rerank
+
+        cand_user = tk_user * settings.rerank_candidate_multiplier
+        cand_fw = tk_fw * settings.rerank_candidate_multiplier
+        user_hits = vectorstore.query_user_documents_hybrid(engagement_id, query, cand_user, 1)
+        framework_hits = vectorstore.query_frameworks_hybrid(query, cand_fw, 1)
+        user_hits = rerank(query, user_hits, tk_user)
+        framework_hits = rerank(query, framework_hits, tk_fw)
     else:
         user_hits = vectorstore.query_user_documents_hybrid(
             engagement_id, query, tk_user, settings.rerank_candidate_multiplier
@@ -68,11 +77,6 @@ def _retrieve_hits(
         framework_hits = vectorstore.query_frameworks_hybrid(
             query, tk_fw, settings.rerank_candidate_multiplier
         )
-        if settings.rag_level == "full":
-            from .rerank import rerank
-
-            user_hits = rerank(query, user_hits, tk_user)
-            framework_hits = rerank(query, framework_hits, tk_fw)
     return user_hits, framework_hits
 
 

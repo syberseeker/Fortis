@@ -393,3 +393,43 @@ def test_build_chat_messages_reuses_provided_retrieval(monkeypatch):
     messages = rag.build_chat_messages("reuse-eng", "question", [], retrieved=retrieved)
     assert "pre-retrieved zzreusemarker text" in messages[-1]["content"]
     assert "=== Client question ===\nquestion" in messages[-1]["content"]
+
+
+# ---- full-level rerank candidate pipeline -------------------------------------------
+
+def test_full_level_feeds_gt_topk_candidates_to_rerank(monkeypatch):
+    candidates = [
+        _canned_user_hit(f"full-level candidate excerpt {i} zzfullcandmarker") for i in range(8)
+    ]
+    fw_candidates = [_canned_framework_hit("full-level framework control")] * 5
+    captured = {}
+
+    def fake_user_hybrid(engagement_id, query, top_k, candidate_multiplier=4):
+        captured["user_args"] = (top_k, candidate_multiplier)
+        return list(candidates)
+
+    def fake_framework_hybrid(query, top_k, candidate_multiplier=4, framework=None):
+        captured["fw_args"] = (top_k, candidate_multiplier)
+        return list(fw_candidates)
+
+    rerank_calls = []
+
+    def fake_rerank(q, hits, top_k):
+        rerank_calls.append((len(hits), top_k))
+        return hits[:top_k]
+
+    monkeypatch.setattr(vectorstore, "query_user_documents_hybrid", fake_user_hybrid)
+    monkeypatch.setattr(vectorstore, "query_frameworks_hybrid", fake_framework_hybrid)
+    monkeypatch.setattr("core.rerank.rerank", fake_rerank)
+    monkeypatch.setattr(config.settings, "rag_level", "full")
+
+    block = rag.build_context_block("full-cand-eng", "full level query")
+
+    user_top_k, user_mult = captured["user_args"]
+    assert user_mult == 1
+    assert user_top_k == config.settings.top_k_user_doc * config.settings.rerank_candidate_multiplier
+    assert rerank_calls, "full level must invoke the reranker"
+    assert all(n_hits > top_k for n_hits, top_k in rerank_calls), (
+        "reranker must receive more candidates than top_k or it can never reorder"
+    )
+    assert "zzfullcandmarker" in block
