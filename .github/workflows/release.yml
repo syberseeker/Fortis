@@ -16,7 +16,7 @@ jobs:
       - name: Extract changelog section for this tag
         id: changelog
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          export VERSION="${GITHUB_REF_NAME#v}"
           python3 - <<'EOF'
           import os, re
 
