@@ -5,6 +5,45 @@ to the current build. Each version below is tagged in git (`v0.1.0` …
 `v0.6.1`) at the commit that marks its release. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Phase 2 evaluation harness (`eval/`)** — golden dataset, retrieval-quality
+  metrics, and a RAG ablation runner for the evidence-grounding study:
+  - `eval/datasets/golden_qa.json`: 51 annotated QA items — 37 `doc_qa`
+    anchored verbatim in the four training sample-lab documents, 8
+    `framework_qa` anchored in the seeded NIST CSF / OWASP / CIS corpus
+    (including the 2025-edition category moves), and 6 `abstention` traps
+    (capability-boundary and evidence-absent questions a reliable advisor
+    should decline or answer explicitly as not present). Every item carries
+    evidence anchors, gold atomic claims, gold control ids, and difficulty;
+    a sha256 `manifest.json` tracks the dataset plus all 17 source files and
+    is verified at run time.
+  - `eval/metrics/retrieval.py`: pure, deterministic recall@k, precision@k,
+    MRR, binary nDCG@k, and context-sufficiency@k over merged
+    user/framework hits.
+  - `eval/runners/rag_ablation.py`: one-command ablation across
+    `basic` / `standard` / `full` / `full-no-rerank` conditions over the
+    full dataset, with per-condition latency percentiles, stub-backend
+    guard (`--allow-stub` opt-in for wiring runs), and markdown/CSV/JSON
+    artifacts under `eval/runs/` (gitignored).
+  - 22 offline tests for the metrics, dataset integrity, manifest
+    verification, and runner wiring; suite grew 319 → 341.
+- First real ablation result (bge-small embeddings, this repo's corpora):
+  the shipped `standard` level is the sweet spot — the cross-encoder
+  reranker at `full` *lowers* recall@10 (0.843 → 0.797) and sufficiency@10
+  (0.961 → 0.902) while adding ~4.4 s p50 retrieval latency versus ~4–6 ms.
+
+### Fixed
+- **`full` RAG level never actually reranked.** The hybrid fuse cut results
+  to top-k *before* the cross-encoder saw them, and the reranker skips
+  lists no larger than top-k — so `full` behaved identically to `standard`
+  on every query since the tier shipped. The pipeline now keeps the fused
+  candidate set (top-k × candidate multiplier) for reranking and cuts to
+  top-k only after scoring, with a regression test asserting the reranker
+  receives more candidates than top-k. Surfaced by the new ablation
+  harness; re-run shows the levels now genuinely diverge.
+
 ## [0.6.1] — 2026-10-19
 
 ### Added

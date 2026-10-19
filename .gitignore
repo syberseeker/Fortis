@@ -11,3 +11,4 @@ fortis-out.log
 fortis-err.log
 .opencode/
 .openchamber/
+eval/runs/

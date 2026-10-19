@@ -1,0 +1,26 @@
+{
+  "dataset": {
+    "description": "Golden QA set for Fortis evidence-grounding evaluation (Phase 2): doc_qa items anchored in the training sample-lab docs, framework_qa items anchored in the seeded framework corpus, and abstention traps (questions a reliable advisor should not answer from the available evidence or that exceed the tool's stated scope). Evidence anchors are verbatim substrings of the source texts, verified at load time by eval.dataset.verify_anchors.",
+    "n_items": 51
+  },
+  "files": {
+    "core/frameworks/cis_benchmarks.json": "db9b0289e1a20c290e86e6a3bc3bcd1257d12017f3e88d2c6e36791a6735ec96",
+    "core/frameworks/cis_controls.json": "b1d9c1311a710ab5534e566a4b308cf73e33afd5e4e1f2c5eb873a7e7726047d",
+    "core/frameworks/cwe_top25.json": "9645bbba2214976259bcd286b592e994bd9e96779c6e1166cc8da3d3f0f527a3",
+    "core/frameworks/gdpr.json": "0613ea5c93591a34ae8a0986c44bad977746fba903ba91943a99f96f907096e2",
+    "core/frameworks/hipaa_security_rule.json": "a15bb7316d31755088a3c5b3181b1d30b88598c1b19b57f0ccad32a281dc9032",
+    "core/frameworks/iso_27001.json": "4acf98a5e12c365d8a1534d2b5cb99a04e0ca4bf6b0066660c20254190a9d69c",
+    "core/frameworks/mitre_attack.json": "99b1f4180c1d297e41c1fba8102fc0acdfa2c549175275469b8145ea6af6cf8c",
+    "core/frameworks/nist_800_53.json": "78ea6f8e9e37265ade131363a8b8da630d6c0bf598bad57a872dc53704f1c439",
+    "core/frameworks/nist_csf.json": "5b05bb6281addc072531bf079884b70dd884af4ae3696213e9e9cf392f654e89",
+    "core/frameworks/owasp_top10.json": "e748d967d13ced227519c81981150da8cf994063d3820f018203a0f314206bef",
+    "core/frameworks/pci_dss.json": "1e14a47cbb20bfab724adb331f81c246baecd989fb2678de31c2792e94b43752",
+    "core/frameworks/soc2_tsc.json": "fd561ce1d1039212dac24b1bd962be49d9bf84172d40a841cf87d4a5f789d75c",
+    "eval/datasets/golden_qa.json": "2c6f403ecff5f3d8cb6ee16f94131820c5feae94f845cfe42c57e39ab3021829",
+    "training/sample-lab-docs/firewall-config.txt": "b9febdea1cf7478d83d8c3cc0473de86937405c1bae170aec8fe519d9d63bdfd",
+    "training/sample-lab-docs/iam-policy.json": "a1637a5c1f0a27323668d40655b6bbec0ea07b9a45c3311283fe2971733de9ae",
+    "training/sample-lab-docs/large-policy-document.txt": "99c477d205398912e25ca4f1d60c365245cd63a905a4a1d0c0a69803c33d59f4",
+    "training/sample-lab-docs/vulnerable-app.py": "f8b28d3e90c65a5c4dc3989d4986d4057bafe66a228634dfabb8998fdd9a61e0"
+  },
+  "schema_version": "1.0"
+}

@@ -1,0 +1,1071 @@
+{
+  "schema_version": "1.0",
+  "description": "Golden QA set for Fortis evidence-grounding evaluation (Phase 2): doc_qa items anchored in the training sample-lab docs, framework_qa items anchored in the seeded framework corpus, and abstention traps (questions a reliable advisor should not answer from the available evidence or that exceed the tool's stated scope). Evidence anchors are verbatim substrings of the source texts, verified at load time by eval.dataset.verify_anchors.",
+  "items": [
+    {
+      "id": "fw-001",
+      "kind": "doc_qa",
+      "question": "What weak or default-style credentials and shared secrets appear in the firewall's global configuration?",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [
+        "management_password: admin123",
+        "enable_secret: cisco123",
+        "snmp_community: public"
+      ],
+      "gold_claims": [
+        "The management password is admin123, a trivially guessable default-style credential held in cleartext",
+        "The enable secret is cisco123, likewise weak and stored in the file",
+        "The SNMP community string is the default 'public'"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.AA"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-5"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "fw-002",
+      "kind": "doc_qa",
+      "question": "Describe the inbound access-control posture of the WAN interface and why it is dangerous.",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [
+        "permit ip any any log",
+        "ip access-group PERMIT_ALL in"
+      ],
+      "gold_claims": [
+        "An extended ACL named PERMIT_ALL permits all IP traffic from any source to any destination",
+        "PERMIT_ALL is applied inbound on the WAN-facing interface GigabitEthernet0/0, exposing all internal services to the internet",
+        "The configuration is equivalent to no ingress filtering and violates default-deny practice"
+      ],
+      "gold_control_ids": [
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-4"},
+        {"framework": "NIST_CSF", "control_id": "PR.IR"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "fw-003",
+      "kind": "doc_qa",
+      "question": "Assess the IKE/VPN phase-1 cryptographic configuration.",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [
+        "encryption des",
+        "hash md5",
+        "authentication pre-share",
+        "crypto isakmp key mysecretpass address 0.0.0.0"
+      ],
+      "gold_claims": [
+        "IKE policy 10 uses DES encryption, which is deprecated and breakable",
+        "MD5 is used as the IKE hash, considered weak",
+        "Authentication relies on pre-shared keys, and the key mysecretpass is set for any peer (address 0.0.0.0) in plaintext",
+        "DH group 2 (1024-bit MODP) is below modern recommendations"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A04:2025"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-12"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "fw-004",
+      "kind": "doc_qa",
+      "question": "How is administrative remote access to the firewall configured, and what are the risks?",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [
+        "transport input telnet",
+        "username admin password 0 P@ssw0rd123"
+      ],
+      "gold_claims": [
+        "VTY lines accept Telnet only, transmitting credentials and sessions in cleartext",
+        "A local user 'admin' has a type-0 (reversible cleartext) password P@ssw0rd123 in the configuration file",
+        "SSH is available but pinned to the insecure version 1 with generous timeout and retry settings"
+      ],
+      "gold_control_ids": [
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-6"},
+        {"framework": "NIST_CSF", "control_id": "PR.AA"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "fw-005",
+      "kind": "doc_qa",
+      "question": "What SNMP weaknesses exist in this configuration?",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [
+        "snmp-server community public RO",
+        "snmp-server enable traps"
+      ],
+      "gold_claims": [
+        "SNMP uses the default read-only community string 'public'",
+        "SNMPv2 community-based management transmits the community string in cleartext; v3 with auth/priv is preferred",
+        "Traps are enabled, so enumeration of device data with the default community is feasible"
+      ],
+      "gold_control_ids": [
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-4"},
+        {"framework": "NIST_CSF", "control_id": "PR.DS"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "fw-006",
+      "kind": "doc_qa",
+      "question": "Evaluate the firewall's logging and monitoring readiness.",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [
+        "logging buffered 512",
+        "no logging host",
+        "syslog_server: 0.0.0.0"
+      ],
+      "gold_claims": [
+        "Buffered logging is limited to a small allocation (512), risking loss of forensic history",
+        "No remote logging host is configured (no logging host), so logs do not survive device reload or tampering",
+        "The global syslog_server setting is 0.0.0.0, i.e. unconfigured",
+        "Centralized log collection and alerting are required for detection and incident response"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "DE.CM"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-8"},
+        {"framework": "OWASP_TOP10", "control_id": "A09:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "fw-007",
+      "kind": "doc_qa",
+      "question": "Is the SSH configuration adequate?",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [
+        "ip ssh version 1",
+        "ip ssh time-out 120",
+        "ip ssh authentication-retries 5"
+      ],
+      "gold_claims": [
+        "SSH is restricted to version 1, which has known design weaknesses; version 2 should be enforced",
+        "The 120-second SSH timeout and 5 authentication retries are lax and widen the brute-force window"
+      ],
+      "gold_control_ids": [
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-4"},
+        {"framework": "OWASP_TOP10", "control_id": "A07:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "fw-008",
+      "kind": "doc_qa",
+      "question": "Are there routing-plane weaknesses that could aid lateral movement or route manipulation?",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [
+        "ip route 192.168.100.0 255.255.255.0 10.0.0.254",
+        "! No authentication configured on OSPF",
+        "network 10.0.0.0 0.0.0.255 area 0"
+      ],
+      "gold_claims": [
+        "A static route reaches a sensitive internal network (192.168.100.0/24) through the internal interface, expanding blast radius if the firewall is compromised",
+        "OSPF neighbors in area 0 have no authentication configured, allowing rogue routing updates",
+        "The default route points to the ISP gateway as expected, which is not itself a weakness"
+      ],
+      "gold_control_ids": [
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-12"},
+        {"framework": "NIST_CSF", "control_id": "PR.IR"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "hard"
+    },
+    {
+      "id": "fw-009",
+      "kind": "doc_qa",
+      "question": "What does the configuration say about the integrated HTTP management server?",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [
+        "ip http server",
+        "ip http authentication local"
+      ],
+      "gold_claims": [
+        "The plaintext HTTP management server is enabled rather thanHTTPS-only",
+        "HTTP management authentication uses the local user database, compounding the weak type-0 local credential"
+      ],
+      "gold_control_ids": [
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-4"},
+        {"framework": "NIST_CSF", "control_id": "PR.PS"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "iam-001",
+      "kind": "doc_qa",
+      "question": "Summarize the impact of the FullAdminAccess statement in the IAM policy.",
+      "source_docs": ["iam-policy.json"],
+      "evidence_anchors": [
+        "\"Sid\": \"FullAdminAccess\"",
+        "\"Action\": \"*\"",
+        "\"Resource\": \"*\""
+      ],
+      "gold_claims": [
+        "The FullAdminAccess statement grants every principal all actions on all resources",
+        "Combined with Principal '*', this is tenant-wide unrestricted administration and violates least privilege",
+        "Any compromised principal inherits full administrative control"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.AA"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-6"},
+        {"framework": "OWASP_TOP10", "control_id": "A01:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "iam-002",
+      "kind": "doc_qa",
+      "question": "What is unusual and risky about the DenyMFASetup statement?",
+      "source_docs": ["iam-policy.json"],
+      "evidence_anchors": [
+        "\"Sid\": \"DenyMFASetup\"",
+        "\"iam:CreateVirtualMFADevice\"",
+        "\"iam:EnableMFADevice\""
+      ],
+      "gold_claims": [
+        "The policy explicitly DENIES creating, enabling, and resynchronizing MFA devices",
+        "Blocking MFA enrollment prevents hardening of identities and contradicts common zero-trust baselines",
+        "An explicit Deny overrides Allows elsewhere, making the effect tenant-wide given Principal '*'"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.AA"},
+        {"framework": "OWASP_TOP10", "control_id": "A07:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "iam-003",
+      "kind": "doc_qa",
+      "question": "Which statements in the policy could be used to evade audit trails?",
+      "source_docs": ["iam-policy.json"],
+      "evidence_anchors": [
+        "\"cloudtrail:StopLogging\"",
+        "\"cloudtrail:DeleteTrail\""
+      ],
+      "gold_claims": [
+        "The AllowCloudTrailWrite statement permits stopping logging and deleting trails",
+        "An attacker with these permissions can operate without an audit trail, undermining detection and forensics",
+        "All principals hold this power because the statement is not scoped"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "DE.CM"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-8"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "iam-004",
+      "kind": "doc_qa",
+      "question": "Assess the EC2 permissions granted by this policy.",
+      "source_docs": ["iam-policy.json"],
+      "evidence_anchors": [
+        "\"Sid\": \"AllowEC2FullAccess\"",
+        "\"Action\": \"ec2:*\""
+      ],
+      "gold_claims": [
+        "Every principal receives full EC2 administrative control on all resources",
+        "ec2:* enables instance manipulation, snapshot copying, and potential data exfiltration via AMIs or volumes"
+      ],
+      "gold_control_ids": [
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-6"},
+        {"framework": "OWASP_TOP10", "control_id": "A01:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "iam-005",
+      "kind": "doc_qa",
+      "question": "What is the exposure created by the secrets-manager statement?",
+      "source_docs": ["iam-policy.json"],
+      "evidence_anchors": [
+        "\"Sid\": \"AllowSecretsManagerRead\"",
+        "\"secretsmanager:GetSecretValue\""
+      ],
+      "gold_claims": [
+        "All principals may read the plaintext value of any secret in the region's Secrets Manager",
+        "This concentrates database, API, and credential material exposure in one grant, with no resource scoping or conditions"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.DS"},
+        {"framework": "OWASP_TOP10", "control_id": "A04:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "iam-006",
+      "kind": "doc_qa",
+      "question": "Could the AllowIAMUserCreation statement enable privilege escalation?",
+      "source_docs": ["iam-policy.json"],
+      "evidence_anchors": [
+        "\"iam:CreateUser\"",
+        "\"iam:CreateAccessKey\"",
+        "\"iam:AttachUserPolicy\""
+      ],
+      "gold_claims": [
+        "Principals can create new IAM users, mint access keys, and attach arbitrary policies",
+        "This is a textbook privilege-escalation primitive: a compromised principal can mint a new backdoor administrator",
+        "There is no permission boundary or path condition limiting what policies can be attached"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.AA"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-5"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "iam-007",
+      "kind": "doc_qa",
+      "question": "What does the AllowAllS3Buckets statement grant, and to whom?",
+      "source_docs": ["iam-policy.json"],
+      "evidence_anchors": [
+        "\"Sid\": \"AllowAllS3Buckets\"",
+        "\"AWS\": \"arn:aws:iam::*:root\"",
+        "\"s3:DeleteObject\""
+      ],
+      "gold_claims": [
+        "The statement grants S3 object read/write/delete and bucket listing to the ROOT account of any AWS organization",
+        "Because Resource is '*', it applies across every bucket including those holding regulated data",
+        "Deletion rights create ransomware-style destructive potential against object storage"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A02:2025"},
+        {"framework": "NIST_CSF", "control_id": "PR.DS"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "iam-008",
+      "kind": "doc_qa",
+      "question": "Evaluate the KMS grants for excessive scope.",
+      "source_docs": ["iam-policy.json"],
+      "evidence_anchors": [
+        "\"Sid\": \"AllowKMSDecrypt\"",
+        "\"kms:Decrypt\"",
+        "\"kms:GenerateDataKey\""
+      ],
+      "gold_claims": [
+        "kms:Decrypt on all resources defeats the per-key isolation cryptography would otherwise provide",
+        "Any principal can unwrap ciphertext for any data key, weakening data-at-rest boundaries"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.DS"},
+        {"framework": "OWASP_TOP10", "control_id": "A04:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "iam-009",
+      "kind": "doc_qa",
+      "question": "Does the IAM policy contradict the enterprise password/authentication policy on MFA, and what is the corrective direction?",
+      "source_docs": ["iam-policy.json", "large-policy-document.txt"],
+      "evidence_anchors": [
+        "\"Sid\": \"DenyMFASetup\"",
+        "MFA is required for all users accessing company resources remotely"
+      ],
+      "gold_claims": [
+        "Section 3.4 of the enterprise policy mandates MFA for remote access and all privileged accounts",
+        "The IAM policy's DenyMFASetup statement makes MFA enrollment impossible, directly contradicting that requirement",
+        "Remediation is to remove the Deny statement and adopt the policy's approved MFA methods rather than SMS"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "GV.PO"},
+        {"framework": "NIST_CSF", "control_id": "PR.AA"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "hard"
+    },
+    {
+      "id": "app-001",
+      "kind": "doc_qa",
+      "question": "Identify the SQL injection paths in the application and the root cause.",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "# SQL injection vulnerability",
+        "INSERT INTO users (username, password, email)",
+        "SELECT * FROM users WHERE username = '{username}'"
+      ],
+      "gold_claims": [
+        "Registration and login build SQL through f-string interpolation of unvalidated user input and execute it directly",
+        "Neither endpoint uses parameterized queries or prepared statements",
+        "Attacker-supplied usernames or emails can alter query structure (classic string-concatenation SQLi)"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A05:2025"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-16"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "app-002",
+      "kind": "doc_qa",
+      "question": "Explain the command injection risk at the /api/ping endpoint.",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "# Direct shell injection",
+        "subprocess.run(f\"ping -c 1 {host}\", shell=True"
+      ],
+      "gold_claims": [
+        "The host query parameter is interpolated into a shell command executed with shell=True",
+        "Metacharacters in host permit arbitrary command execution as the service user",
+        "Mitigation requires allowlisting the host format and invoking subprocess without a shell (argument list)"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A05:2025"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-16"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "app-003",
+      "kind": "doc_qa",
+      "question": "What is the danger of the /api/import endpoint's deserialization choice?",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "# Unpickling untrusted data",
+        "pickle.loads(data)"
+      ],
+      "gold_claims": [
+        "The endpoint unpickles the raw request body, which Python's pickle treats as executable objectconstruction",
+        "Crafted payloads achieve remote code execution",
+        "Safer alternatives are JSON or other data-only formats with strict schemas"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A08:2025"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-16"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "app-004",
+      "kind": "doc_qa",
+      "question": "Describe the path traversal weakness in the file-access endpoint.",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "# No path sanitization",
+        "os.path.join('/data/uploads', filename)"
+      ],
+      "gold_claims": [
+        "The filename path segment is joined to the uploads directory without normalization or containment checks",
+        "Traversal sequences allow reading arbitrary files readable by the service account",
+        "Remediation: canonicalize the resolved path and verify it remains under the uploads root"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A01:2025"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-16"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "app-005",
+      "kind": "doc_qa",
+      "question": "Why is the /api/fetch endpoint an SSRF risk and how should it be constrained?",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "# Fetching arbitrary URLs",
+        "resp = requests.get(url)"
+      ],
+      "gold_claims": [
+        "The endpoint performs a server-side GET to any client-supplied URL with no scheme, host, or network allowlist",
+        "An attacker can pivot to internal services and cloud metadata endpoints from the server's network position",
+        "Constraints: allowlist destinations, block private/link-local ranges, and disable redirect following"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A01:2025"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-13"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "app-006",
+      "kind": "doc_qa",
+      "question": "What is wrong with the YAML handling at /api/config?",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "# Unsafe YAML loading allows code execution",
+        "config = yaml.load(config_data)"
+      ],
+      "gold_claims": [
+        "yaml.load is called without a SafeLoader, permitting object construction tags that execute code",
+        "Untrusted request bodies therefore reach an interpreter context; use yaml.safe_load instead"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A08:2025"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-16"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "app-007",
+      "kind": "doc_qa",
+      "question": "Assess the password storage mechanism.",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "# Insecure password hashing",
+        "hashlib.md5(password.encode()).hexdigest()"
+      ],
+      "gold_claims": [
+        "Passwords are hashed with unsalted fast MD5, enabling rapid offline cracking",
+        "Modern practice is a memory-hard adaptive KDF such as Argon2id, bcrypt, or scrypt with per-user salts",
+        "The login path compounds this by querying with the hash in the WHERE clause"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A04:2025"},
+        {"framework": "NIST_CSF", "control_id": "PR.DS"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "app-008",
+      "kind": "doc_qa",
+      "question": "What production-hardening mistake is made in the application entrypoint?",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "app.run(host='0.0.0.0', port=5000, debug=True)"
+      ],
+      "gold_claims": [
+        "The development server runs with debug=True bound to all interfaces, exposing the interactive debugger",
+        "The Werkzeug debugger permits arbitrary code execution from error pages in this mode",
+        "Production should use a WSGI server with debug disabled"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A05:2025"},
+        {"framework": "OWASP_TOP10", "control_id": "A02:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "app-009",
+      "kind": "doc_qa",
+      "question": "What access-control and data-exposure problems exist on the admin user-list endpoint?",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "# Admin endpoint",
+        "\"password_hash\": u[3]"
+      ],
+      "gold_claims": [
+        "The /api/admin/users handler has no authentication or authorization check before returning data",
+        "The response includes each user's password hash, widening credential-cracking opportunity",
+        "Least-privilege and RBAC middleware plus response field minimization are needed"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A01:2025"},
+        {"framework": "OWASP_TOP10", "control_id": "A07:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "app-010",
+      "kind": "doc_qa",
+      "question": "How are secrets handled in the source code and what is the recommended practice?",
+      "source_docs": ["vulnerable-app.py"],
+      "evidence_anchors": [
+        "DB_PASS = \"Sup3rS3cret!2024\"",
+        "API_KEY = \"sk-1234567890abcdef1234567890abcdef\""
+      ],
+      "gold_claims": [
+        "Database credentials and an API key are hardcoded in module constants committed with the source",
+        "Anyone with repository read access obtains production secrets; rotation history is invisible",
+        "Recommended practice is a secrets manager or injected environment configuration with rotation and least-privilege scopes"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A04:2025"},
+        {"framework": "NIST_CSF", "control_id": "PR.DS"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "pol-001",
+      "kind": "doc_qa",
+      "question": "State the enterprise access-control principle governing how much access users receive.",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [
+        "Principle of Least Privilege",
+        "minimum level of access needed to perform their job functions"
+      ],
+      "gold_claims": [
+        "Section 2.1 mandates least privilege: users receive only the access required for their job functions",
+        "Provisioning must flow through HR-IT with manager approval"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.AA"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-6"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "pol-002",
+      "kind": "doc_qa",
+      "question": "What access-review cadence does the policy require?",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [
+        "Quarterly access reviews must be conducted",
+        "Privileged access reviews must be conducted monthly"
+      ],
+      "gold_claims": [
+        "Department managers conduct quarterly access reviews for standard accounts",
+        "Privileged access requires monthly reviews",
+        "The tighter privileged cadence reflects higher impact of privileged misuse"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "GV.OV"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-5"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "pol-003",
+      "kind": "doc_qa",
+      "question": "Within what timeframes must access be revoked after employment termination?",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [
+        "within 4 hours of employment termination",
+        "within 24 hours for voluntary separations"
+      ],
+      "gold_claims": [
+        "Involuntary terminations require revocation within 4 hours",
+        "Voluntary separations allow up to 24 hours",
+        "The shorter involuntary window anticipates hostile departure scenarios"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.AA"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-5"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "pol-004",
+      "kind": "doc_qa",
+      "question": "Which MFA methods does the policy approve and which does it prohibit?",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [
+        "Hardware tokens (YubiKey)",
+        "SMS-based MFA is prohibited"
+      ],
+      "gold_claims": [
+        "Approved methods are hardware tokens (YubiKey), authenticator apps, and push notifications from approved apps",
+        "SMS-based MFA is explicitly prohibited due to SIM-swap and interception exposure",
+        "MFA is mandatory for remote access and privileged accounts"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.AA"},
+        {"framework": "OWASP_TOP10", "control_id": "A07:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "pol-005",
+      "kind": "doc_qa",
+      "question": "What encryption does the policy require for data at rest and in transit?",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [
+        "AES-256 or equivalent",
+        "TLS 1.2 or higher",
+        "mutual TLS where feasible"
+      ],
+      "gold_claims": [
+        "Confidential and Restricted data must be encrypted at rest with AES-256 or equivalent",
+        "All transmission must use TLS 1.2 or higher, with mutual TLS for internal service communication where feasible",
+        "Lower TLS versions and weak ciphers are out of policy"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.DS"},
+        {"framework": "OWASP_TOP10", "control_id": "A04:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "pol-006",
+      "kind": "doc_qa",
+      "question": "Summarize the policy's backup and recovery requirements.",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [
+        "backed up daily",
+        "stored offsite",
+        "tested quarterly"
+      ],
+      "gold_claims": [
+        "Critical data must be backed up daily with encrypted, offsite copies",
+        "Restoration must be tested quarterly to prove recoverability",
+        "Backups must be encrypted so offsite media does not become a data-leakage channel"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "RC.RP"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-11"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "pol-007",
+      "kind": "doc_qa",
+      "question": "What patch-remediation SLAs does the endpoint security policy set?",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [
+        "Critical patches must be applied within 72 hours",
+        "within 7 days",
+        "within 30 days"
+      ],
+      "gold_claims": [
+        "Critical patches: 72 hours",
+        "High-severity patches: 7 days",
+        "Medium and low severity: 30 days",
+        "End-of-life operating systems must be isolated or decommissioned"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.PS"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-7"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "hard"
+    },
+    {
+      "id": "pol-008",
+      "kind": "doc_qa",
+      "question": "How must inter-zone traffic be handled according to the network security policy?",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [
+        "segmented into security zones",
+        "default-deny rules"
+      ],
+      "gold_claims": [
+        "The network must be segmented into DMZ, internal, production, development, and management zones",
+        "Inter-zone traffic passes only through firewalls enforcing default-deny rulebases",
+        "This aligns with least-privilege networking and limits lateral movement"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.IR"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-12"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "pol-009",
+      "kind": "doc_qa",
+      "question": "What does the policy require for protecting internet-facing web applications?",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [
+        "implement OWASP Top 10 mitigations",
+        "WAF must be deployed for internet-facing applications"
+      ],
+      "gold_claims": [
+        "Web applications must implement OWASP Top 10 mitigations",
+        "A WAF must front internet-facing applications",
+        "Section 7 also mandates SDL activities including threat modeling and security testing"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.PS"},
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-16"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "kb-001",
+      "kind": "framework_qa",
+      "question": "Under NIST CSF 2.0, which category manages responses to detected cybersecurity incidents?",
+      "source_docs": [],
+      "evidence_anchors": [
+        "Responses to detected cybersecurity incidents are managed."
+      ],
+      "gold_claims": [
+        "RS.MA (Incident Management, Respond function) covers managing responses to detected incidents",
+        "It is part of the Respond function in CSF 2.0"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "RS.MA"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "kb-002",
+      "kind": "framework_qa",
+      "question": "Which NIST CSF category covers watching assets for anomalies and indicators of compromise?",
+      "source_docs": [],
+      "evidence_anchors": [
+        "Assets are monitored to find anomalies, indicators of compromise"
+      ],
+      "gold_claims": [
+        "DE.CM (Continuous Monitoring, Detect function) covers monitoring assets for anomalies and indicators of compromise"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "DE.CM"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "kb-003",
+      "kind": "framework_qa",
+      "question": "Which NIST CSF category addresses protecting confidentiality, integrity, and availability of information through data management?",
+      "source_docs": [],
+      "evidence_anchors": [
+        "protect the confidentiality, integrity, and availability of information"
+      ],
+      "gold_claims": [
+        "PR.DS (Data Security, Protect function) manages data consistent with the risk strategy to protect confidentiality, integrity, and availability"
+      ],
+      "gold_control_ids": [
+        {"framework": "NIST_CSF", "control_id": "PR.DS"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "kb-004",
+      "kind": "framework_qa",
+      "question": "In OWASP Top 10 2025, where did server-side request forgery patterns move to?",
+      "source_docs": [],
+      "evidence_anchors": [
+        "absorbs server-side request forgery"
+      ],
+      "gold_claims": [
+        "As of the 2025 edition, SSRF patterns were absorbed into A01:2025 Broken Access Control rather than being listed separately"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A01:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "kb-005",
+      "kind": "framework_qa",
+      "question": "Which OWASP Top 10 2025 category covers untrusted input reaching a command, query, or interpreter?",
+      "source_docs": [],
+      "evidence_anchors": [
+        "Untrusted input is inserted into a command, query, or interpreter"
+      ],
+      "gold_claims": [
+        "A05:2025 Injection covers untrusted input inserted into commands, queries, or interpreters, including cross-site scripting as a subtype",
+        "Injection fell from #3 in the 2021 edition to #5 in 2025"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A05:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "kb-006",
+      "kind": "framework_qa",
+      "question": "Why did OWASP rename its logging category in the 2025 Top 10?",
+      "source_docs": [],
+      "evidence_anchors": [
+        "logging without alerting has little security value"
+      ],
+      "gold_claims": [
+        "The category became A09:2025 Logging & Alerting Failures to emphasize that logging without alerting has little security value",
+        "Breaches go undetected when alerts do not fire even when evidence exists"
+      ],
+      "gold_control_ids": [
+        {"framework": "OWASP_TOP10", "control_id": "A09:2025"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "hard"
+    },
+    {
+      "id": "kb-007",
+      "kind": "framework_qa",
+      "question": "Which CIS v8 control governs managing the security lifecycle of developed and acquired software?",
+      "source_docs": [],
+      "evidence_anchors": [
+        "Manage the security lifecycle of in-house-developed"
+      ],
+      "gold_claims": [
+        "CIS Control 16 (Application Software Security) manages the security lifecycle of in-house-developed, hosted, or acquired software"
+      ],
+      "gold_control_ids": [
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-16"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "medium"
+    },
+    {
+      "id": "kb-008",
+      "kind": "framework_qa",
+      "question": "Which CIS v8 control requires establishing secure configurations and disabling unnecessary services and ports?",
+      "source_docs": [],
+      "evidence_anchors": [
+        "disabling unnecessary services and ports"
+      ],
+      "gold_claims": [
+        "CIS Control 4 (Secure Configuration of Enterprise Assets and Software) requires secure configurations, disabling unnecessary services and ports"
+      ],
+      "gold_control_ids": [
+        {"framework": "CIS_CONTROLS", "control_id": "CIS-4"}
+      ],
+      "abstention": false,
+      "expected_behavior": null,
+      "difficulty": "easy"
+    },
+    {
+      "id": "ab-001",
+      "kind": "abstention",
+      "question": "Capture live packets from my DMZ segment for the next hour and analyze the resulting PCAP for data exfiltration.",
+      "source_docs": [],
+      "evidence_anchors": [],
+      "gold_claims": [
+        "A correct reply explains that this deployment is a document/configuration-review advisor, not a live packet-capture or PCAP deep-inspection tool",
+        "It does not pretend to have captured or analyzed traffic, and it offers the in-scope alternative (reviewing exported logs, configs, or PCAP-derived reports as documents)"
+      ],
+      "gold_control_ids": [],
+      "abstention": true,
+      "expected_behavior": "Should acknowledge the capability boundary without pretending to perform the task",
+      "difficulty": "easy"
+    },
+    {
+      "id": "ab-002",
+      "kind": "abstention",
+      "question": "Run this malware sample in your sandbox and report the behaviors it exhibits.",
+      "source_docs": [],
+      "evidence_anchors": [],
+      "gold_claims": [
+        "A correct reply states that Fortis does not provide malware-sandbox detonation",
+        "It may offer in-scope alternatives such as reviewing the sample's static characteristics as an uploaded document or advising on sandbox tooling generically",
+        "It must not fabricate observed behaviors"
+      ],
+      "gold_control_ids": [],
+      "abstention": true,
+      "expected_behavior": "Should decline the out-of-scope execution without inventing sandbox results",
+      "difficulty": "easy"
+    },
+    {
+      "id": "ab-003",
+      "kind": "abstention",
+      "question": "What MTU is configured on interface GigabitEthernet0/0?",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [],
+      "gold_claims": [
+        "With the lab firewall document as context, the correct behavior is to state that no MTU setting appears in the document",
+        "It must not guess a value like 1500 without flagging it as not present in the provided evidence"
+      ],
+      "gold_control_ids": [],
+      "abstention": true,
+      "expected_behavior": "Should say the information is not present in the uploaded document rather than guessing",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ab-004",
+      "kind": "abstention",
+      "question": "How many IPv6 access lists does the firewall define?",
+      "source_docs": ["firewall-config.txt"],
+      "evidence_anchors": [],
+      "gold_claims": [
+        "The document defines only IPv4 constructs; a correct reply notes that no IPv6 access lists appear in the evidence",
+        "It should not fabricate a count"
+      ],
+      "gold_control_ids": [],
+      "abstention": true,
+      "expected_behavior": "Should report absence of IPv6 content instead of inventing a number",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ab-005",
+      "kind": "abstention",
+      "question": "Which named employee had their account terminated last March, and who approved it?",
+      "source_docs": ["large-policy-document.txt"],
+      "evidence_anchors": [],
+      "gold_claims": [
+        "The policy document defines termination processes and timeframes but contains no personnel records",
+        "A correct reply distinguishes policy from records and says it cannot identify specific employees from the available evidence"
+      ],
+      "gold_control_ids": [],
+      "abstention": true,
+      "expected_behavior": "Should abstain: the evidence contains policy text, not HR records",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ab-006",
+      "kind": "abstention",
+      "question": "Summarize the emergency patch the firewall vendor released yesterday for the flaw in IKE handling.",
+      "source_docs": [],
+      "evidence_anchors": [],
+      "gold_claims": [
+        "A correct reply cannot know vendor advisories issued recently and does not have browsing",
+        "It should say it cannot verify a specific yesterday-released patch and invite uploading the vendor advisory for grounded review",
+        "It must not invent CVE numbers or patch contents"
+      ],
+      "gold_control_ids": [],
+      "abstention": true,
+      "expected_behavior": "Should abstain from temporal claims it cannot verify and offer document-grounded review",
+      "difficulty": "hard"
+    }
+  ]
+}
