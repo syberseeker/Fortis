@@ -82,3 +82,15 @@ async def check_model_available():
         return "Using built-in stub responses (no model loaded). Reports will be placeholder data."
     from engine.llama_engine import model_status
     return model_status()
+
+
+def get_last_usage():
+    """Stats of the most recent completion from the active backend
+    (tokens, latency, TTFT, seed) — see engine.llama_engine.get_last_usage.
+    Returns None before the first completion; never raises."""
+    backend = _resolve()
+    if backend == "llama":
+        from engine.llama_engine import get_last_usage as llama_usage
+        return llama_usage()
+    from engine.stub_backend import get_last_usage as stub_usage
+    return stub_usage()

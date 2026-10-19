@@ -7,7 +7,9 @@ when a JSON-mode analysis call is detected. Never touches the network.
 """
 import asyncio
 import json
-from typing import List, Dict
+import threading
+import time
+from typing import Dict, List, Optional
 
 _FAKE_REPORT = {
     "title": "Stub Security Assessment",
@@ -30,6 +32,39 @@ _FAKE_REPORT = {
     "recommendations_summary": ["Load a real model tier from the model picker"],
     "diagram": "flowchart LR\n    Internet[\"Internet\"] --> FW[\"Perimeter Firewall\"]\n    FW --> Web[\"Web Server\"]\n    Web --> DB[(\"Customer Database\")]",
 }
+
+_USAGE_LOCK = threading.Lock()
+_LAST_USAGE: Optional[Dict[str, object]] = None
+
+
+def get_last_usage() -> Optional[Dict[str, object]]:
+    """Parity with the llama backend: stats of the most recent stub reply.
+    Token counts are estimates (core.token_utils heuristic); never raises."""
+    with _USAGE_LOCK:
+        if _LAST_USAGE is None:
+            return None
+        return dict(_LAST_USAGE)
+
+
+def _record_usage(messages, content, temperature) -> None:
+    global _LAST_USAGE
+    from core.token_utils import count_tokens
+
+    prompt_tokens = sum(count_tokens(str(m.get("content", ""))) for m in messages)
+    completion_tokens = count_tokens(content)
+    with _USAGE_LOCK:
+        _LAST_USAGE = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "estimated": True,
+            "llm_ms": 0.0,
+            "ttft_ms": None,
+            "tok_per_s": None,
+            "model": "stub",
+            "temperature": temperature,
+            "seed": None,
+        }
 
 
 def _looks_like_map_prompt(messages: List[Dict[str, str]]) -> bool:
@@ -89,16 +124,19 @@ async def chat(
     import json as _json
 
     if _looks_like_map_prompt(messages) or _looks_like_reduce_prompt(messages) or json_mode:
-        return _json.dumps(_FAKE_REPORT)
-    if _looks_like_diagram_request(messages):
-        return "**STUB MODE ACTIVE** — not a real model response.\n\n" + _STUB_DIAGRAM_REPLY
-    if _looks_like_table_request(messages):
-        return "**STUB MODE ACTIVE** — not a real model response.\n\n" + _STUB_TABLE_REPLY
-    return "This is a stub conversational reply from Fortis (no model loaded)."
+        reply = _json.dumps(_FAKE_REPORT)
+    elif _looks_like_diagram_request(messages):
+        reply = "**STUB MODE ACTIVE** — not a real model response.\n\n" + _STUB_DIAGRAM_REPLY
+    elif _looks_like_table_request(messages):
+        reply = "**STUB MODE ACTIVE** — not a real model response.\n\n" + _STUB_TABLE_REPLY
+    else:
+        reply = "This is a stub conversational reply from Fortis (no model loaded)."
+    _record_usage(messages, reply, temperature)
+    return reply
 
 
 async def chat_stream(messages: List[Dict[str, str]], temperature: float = 0.2):
-    text = await chat(messages)
+    text = await chat(messages, temperature=temperature)
     for word in text.split(" "):
         yield word + " "
         await asyncio.sleep(0)

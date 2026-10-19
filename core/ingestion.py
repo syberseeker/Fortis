@@ -7,7 +7,7 @@ import os
 import csv
 import json
 import re
-from typing import List
+from typing import Dict, List, Tuple, Union
 
 import pymupdf
 import docx
@@ -177,7 +177,7 @@ def _page_span_label(text: str, start: int, end: int, markers: list = None) -> s
             continue
         if match.start() >= end:
             break
-        labels.append(match.group(1))
+        labels.append(_sanitize_source_name(match.group(1)))
     if not labels:
         return ""
     if len(labels) == 1:
@@ -196,35 +196,54 @@ def _page_span_label(text: str, start: int, end: int, markers: list = None) -> s
     return ", ".join(label.lower() for label in labels)
 
 
-def chunk_text_enriched(text: str, filename: str) -> List[str]:
+def chunk_text_enriched(
+    text: str,
+    filename: str,
+    return_meta: bool = False,
+) -> Union[List[str], Tuple[List[str], List[Dict]]]:
     """chunk_text() plus a self-describing header per chunk, e.g.
     '[From nginx.conf — pages 3-4]'. PDF/slide/sheet markers survive text
     extraction but are lost by chunking today; the header keeps every chunk
     traceable to its source span, which also helps the map-reduce report
     path where batches are read without retrieval context. Markers are
     scanned once per document (not per chunk) and the filename is sanitized
-    before it enters prompt context."""
+    before it enters prompt context.
+
+    With return_meta=True also returns, per chunk, best-effort provenance
+    for the chunk body inside the ORIGINAL text: {"start_char", "end_char",
+    "page_label"} (labels are the bracketed source label without the
+    filename decoration; "" when no markers). Chunks are located by
+    forward-anchored prefix search from the previous chunk's end, so exact
+    spans degrade to best-effort where overlap-reconstruction or hard-split
+    overlap makes verbatim location structurally impossible."""
     filename = _sanitize_source_name(filename)
     chunks = chunk_text(text)
     markers = list(_PAGE_MARKER_RE.finditer(text))
-    if not markers:
-        return [f"[From {filename}]\n{chunk}" for chunk in chunks]
-    last_marker_end = markers[-1].end()
+    last_marker_end = markers[-1].end() if markers else 0
     enriched = []
+    metas: List[Dict] = []
     cursor = 0
     for chunk in chunks:
-        start = text.find(chunk[:80], cursor)
+        if markers:
+            start = text.find(chunk[:80], cursor)
+        else:
+            start = text.find(chunk[:80], cursor, cursor + max(len(chunk) + 4, 8192) + 2)
         if start == -1:
             start = cursor
         end = start + len(chunk)
         cursor = end
-        label = _page_span_label(text, start, end, markers)
-        if not label and start < last_marker_end:
-            # chunk sits between markers (leading intro) or trailing overlap;
-            # attribute it to the nearest preceding marker
-            label = _page_span_label(text, last_marker_end - 1, last_marker_end, markers)
+        label = ""
+        if markers:
+            label = _page_span_label(text, start, end, markers)
+            if not label and start < last_marker_end:
+                # chunk sits between markers (leading intro) or trailing overlap;
+                # attribute it to the nearest preceding marker
+                label = _page_span_label(text, last_marker_end - 1, last_marker_end, markers)
         header = f"[From {filename} — {label}]" if label else f"[From {filename}]"
         enriched.append(f"{header}\n{chunk}")
+        metas.append({"start_char": start, "end_char": end, "page_label": label})
+    if return_meta:
+        return enriched, metas
     return enriched
 
 

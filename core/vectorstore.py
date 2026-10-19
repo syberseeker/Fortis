@@ -43,18 +43,37 @@ def _invalidate_corpus_caches() -> None:
             pass
 
 
+def _span_int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
+
+
 def add_user_document_chunks(
     engagement_id: str,
     filename: str,
     chunks: List[str],
+    chunk_meta: Optional[List[Dict]] = None,
 ) -> int:
+    """chunk_meta: optional list aligned to `chunks`, each entry a dict with
+    start_char/end_char/page_label from ingestion.chunk_text_enriched; the
+    keys are merged into stored metadata (scalars only: ints, -1 when
+    unknown, and a string page_label). None keeps metadata identical to the
+    original {engagement_id, filename, chunk_index} shape."""
     if not chunks:
         return 0
     ids = [f"{engagement_id}::{filename}::{i}::{uuid.uuid4().hex[:8]}" for i in range(len(chunks))]
-    metadatas = [
-        {"engagement_id": engagement_id, "filename": filename, "chunk_index": i}
-        for i in range(len(chunks))
-    ]
+    metadatas = []
+    for i in range(len(chunks)):
+        meta = {"engagement_id": engagement_id, "filename": filename, "chunk_index": i}
+        if chunk_meta is not None:
+            cm = chunk_meta[i] if i < len(chunk_meta) and chunk_meta[i] else {}
+            meta["start_char"] = _span_int(cm.get("start_char"))
+            meta["end_char"] = _span_int(cm.get("end_char"))
+            page_label = cm.get("page_label")
+            meta["page_label"] = "" if page_label is None else str(page_label)
+        metadatas.append(meta)
     embeddings = embed_texts(chunks)
     _user_docs.add(ids=ids, embeddings=embeddings, documents=chunks, metadatas=metadatas)
     try:

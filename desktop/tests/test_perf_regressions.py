@@ -74,7 +74,7 @@ def test_chat_build_messages_runs_off_event_loop(client, monkeypatch):
         rec["loop_thread"] = threading.get_ident()
         return message
 
-    def spy_build(engagement_id, user_message, history=None, role=None, retrieval_query=None):
+    def spy_build(engagement_id, user_message, history=None, role=None, retrieval_query=None, **kwargs):
         rec["threads"].append(threading.get_ident())
         rec["on_loop"].append(_running_loop_present())
         return _canned_messages(user_message)
@@ -101,10 +101,10 @@ def test_chat_persistence_runs_off_event_loop(client, monkeypatch):
         rec["loop_thread"] = threading.get_ident()
         return message
 
-    def spy_build(engagement_id, user_message, history=None, role=None, retrieval_query=None):
+    def spy_build(engagement_id, user_message, history=None, role=None, retrieval_query=None, **kwargs):
         return _canned_messages(user_message)
 
-    def spy_append(engagement_id, role, content):
+    def spy_append(engagement_id, role, content, *args, **kwargs):
         rec["roles"].append(role)
         rec["threads"].append(threading.get_ident())
         rec["on_loop"].append(_running_loop_present())

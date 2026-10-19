@@ -219,6 +219,40 @@ def test_chat_returns_stub_reply(client, call_log):
     assert len(call_log) == 1
 
 
+def test_chat_response_contains_sources(client):
+    eng = _make_engagement(client, "Sources Co", "Sources Contract")
+    resp = client.post(
+        "/chat", json={"engagement_id": eng["id"], "message": "what risks do you see?"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "reply" in data
+    assert "sources" in data
+    assert isinstance(data["sources"], list)
+    for src in data["sources"]:
+        assert src["source_type"] in ("user_document", "framework")
+        assert "id" in src and "rank" in src
+
+
+def test_history_exposes_provenance_keys(client):
+    eng = _make_engagement(client, "Provenance Co", "History Keys")
+    assert client.post(
+        "/chat", json={"engagement_id": eng["id"], "message": "what risks do you see?"}
+    ).status_code == 200
+    assert client.post(
+        "/chat", json={"engagement_id": eng["id"], "message": "and the IAM policy?"}
+    ).status_code == 200
+    turns = client.get(f"/chat/history/{eng['id']}").json()["turns"]
+    assert len(turns) == 4
+    for turn in turns:
+        assert "sources" in turn and "usage" in turn
+        assert "model_id" in turn and "rag_level" in turn
+    assistant_turn = turns[1]
+    assert assistant_turn["model_id"] == "stub"
+    assert assistant_turn["rag_level"] == "standard"
+    assert isinstance(assistant_turn["sources"], list)
+
+
 # ---- Report generation: flat path (small doc) ----------------------------
 
 @pytest.mark.parametrize("fmt,magic_check", [

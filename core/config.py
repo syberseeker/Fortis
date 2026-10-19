@@ -11,7 +11,7 @@ _ALLOWED_ENV_KEYS = frozenset(
         "TOP_K_FRAMEWORK", "HIERARCHICAL_THRESHOLD_TOKENS", "MAP_BATCH_TOKENS",
         "RAG_LEVEL", "RERANK_MODEL", "RERANK_BACKEND", "RERANK_CANDIDATE_MULTIPLIER",
         "RERANK_MIN_RAM_GB", "BM25_RRF_K", "UPLOAD_DIR", "REPORT_DIR",
-        "CHROMA_PERSIST_DIR", "DB_PATH",
+        "CHROMA_PERSIST_DIR", "DB_PATH", "FORTIS_EVAL_LOG",
     }
 )
 
@@ -68,6 +68,17 @@ def _env_float(name: str, default: str) -> float:
         return float(default)
 
 
+def _env_opt_int(name: str) -> "int | None":
+    """Optional int: unset/blank/invalid -> None (None means 'no override')."""
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 # Data root: everything persistent (Chroma, SQLite, uploads, reports, models)
 # lives under one directory. Override with FORTIS_DATA_DIR.
 def _default_data_dir() -> str:
@@ -94,6 +105,11 @@ class Settings:
     # assumes ~2 physical cores per 4 logical ones on desktop parts.
     n_threads: int = _env_int("FORTIS_N_THREADS", "-1")
     n_batch: int = _env_int("FORTIS_N_BATCH", "512")
+    # Sampler seed for llama.cpp generation. None (default) keeps llama.cpp's
+    # per-call random behavior; set FORTIS_SEED to an int for reproducible
+    # evaluation runs. Applied to every llama completion (chat, stream,
+    # report analysis, condensation); the warm-up call is exempt.
+    seed: "int | None" = _env_opt_int("FORTIS_SEED")
     # When true, the report pipeline sizes map batches for slow backends
     # (fewer, larger LLM calls) and the UI surfaces a progress endpoint.
     # Kept as one switch so stub/test runs exercise the same code paths.
@@ -138,6 +154,10 @@ class Settings:
     rerank_candidate_multiplier: int = _env_int("RERANK_CANDIDATE_MULTIPLIER", "4")
     rerank_min_ram_gb: float = _env_float("RERANK_MIN_RAM_GB", "8")
     bm25_rrf_k: int = _env_int("BM25_RRF_K", "60")
+    # Opt-in evaluation instrumentation: one JSON line per chat turn under
+    # DATA_DIR/eval_log/. Off by default; when off, the telemetry hooks are
+    # no-ops with zero file IO.
+    eval_log: bool = os.getenv("FORTIS_EVAL_LOG", "0") == "1"
 
 
 def _normalize_rag_level(value: str) -> str:

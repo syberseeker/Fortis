@@ -245,3 +245,151 @@ def test_chunk_text_enriched_handles_hostile_sheet_input_fast():
     assert elapsed < 5.0
     assert chunks
     assert chunks[0].startswith("[From evil.csv]")
+
+
+# ---- span-level provenance (return_meta / chunk_meta) -------------------------
+
+def test_chunk_meta_and_offsets_round_trip_through_vectorstore():
+    eng = "span-acme-q3"
+    text = (
+        "--- Page 1 ---\nAccess logging must record CWE-778 audit events. "
+        "Every admin session token is bound to zzspansentinel42.\n\n"
+        "--- Page 2 ---\nSession token rotation is reviewed quarterly by the GRC team."
+    )
+    chunks, chunk_meta = ingestion.chunk_text_enriched(text, "spans.txt", return_meta=True)
+    assert len(chunks) == len(chunk_meta) >= 1
+    assert chunk_meta[0]["start_char"] == 0
+    assert chunk_meta[0]["end_char"] == len(text)
+    assert chunk_meta[0]["page_label"] == "pages 1-2"
+    assert chunks[0].startswith("[From spans.txt — pages 1-2]\n")
+    assert vectorstore.add_user_document_chunks(eng, "spans.txt", chunks, chunk_meta) == len(chunks)
+
+    result = rag.retrieve_for_query(eng, "zzspansentinel42 session token rotation")
+    assert result["user_hits"], "documented chunk should be retrieved"
+    meta = result["user_hits"][0]["metadata"]
+    assert meta["start_char"] == 0
+    assert meta["end_char"] == len(text)
+    assert meta["page_label"] == "pages 1-2"
+
+
+def test_chunk_text_enriched_empty_page_label_without_markers():
+    eng = "span-plain-acme"
+    chunks, chunk_meta = ingestion.chunk_text_enriched(
+        "Audit retention must be at least twelve months.", "plain.txt", return_meta=True
+    )
+    assert chunks[0].startswith("[From plain.txt]\n")
+    assert chunk_meta[0]["page_label"] == ""
+    assert chunk_meta[0]["start_char"] == 0
+    assert chunk_meta[0]["end_char"] == len("Audit retention must be at least twelve months.")
+    vectorstore.add_user_document_chunks(eng, "plain.txt", chunks, chunk_meta)
+    hits = vectorstore.query_user_documents(eng, "zznomarkers retention twelve months", 3)
+    assert hits
+    assert hits[0]["metadata"]["page_label"] == ""
+
+
+def test_add_user_document_chunks_defaults_missing_meta_to_sentinels():
+    eng = "span-partial-acme"
+    vectorstore.add_user_document_chunks(
+        eng, "partial.txt", ["first chunk zzpartialmarker", "second chunk zzpartialmarker"],
+        chunk_meta=[{"start_char": 3, "end_char": "bad", "page_label": None}],
+    )
+    hits = vectorstore.query_user_documents(eng, "zzpartialmarker", 5)
+    assert len(hits) == 2
+    for h in hits:
+        meta = h["metadata"]
+        assert isinstance(meta["start_char"], int)
+        assert isinstance(meta["end_char"], int)
+        assert isinstance(meta["page_label"], str)
+    first = next(h for h in hits if h["metadata"]["chunk_index"] == 0)
+    assert first["metadata"]["start_char"] == 3
+    assert first["metadata"]["end_char"] == -1
+    assert first["metadata"]["page_label"] == ""
+    second = next(h for h in hits if h["metadata"]["chunk_index"] == 1)
+    assert second["metadata"]["start_char"] == -1
+    assert second["metadata"]["end_char"] == -1
+    assert second["metadata"]["page_label"] == ""
+
+
+# ---- old-chunk safety -----------------------------------------------------------
+
+def test_retrieval_survives_chunks_without_span_metadata():
+    eng = "legacy-acme-q3"
+    vectorstore.add_user_document_chunks(
+        eng, "legacy.txt", ["Legacy chunk about zzlegacymarkerzz access reviews."]
+    )
+    result = rag.retrieve_for_query(eng, "zzlegacymarkerzz access reviews")
+    assert result["user_hits"]
+    hit = result["user_hits"][0]
+    assert set(hit) == {"id", "text", "metadata", "distance", "rank"}
+    assert "start_char" not in hit["metadata"]
+    assert "end_char" not in hit["metadata"]
+    assert "page_label" not in hit["metadata"]
+    assert hit["rank"] == 1
+    assert hit["distance"] is None or isinstance(hit["distance"], float)
+    assert "=== Retrieved excerpts from uploaded documents ===" in result["context_block"]
+
+
+# ---- retrieve_for_query vs build_context_block -------------------------------------
+
+def test_retrieve_for_query_context_block_matches_build_context_block(monkeypatch):
+    user_hits = [
+        _canned_user_hit("first structured excerpt"),
+        _canned_user_hit("second structured excerpt"),
+    ]
+    framework_hits = [_canned_framework_hit("structured control text")]
+
+    monkeypatch.setattr(vectorstore, "query_user_documents", lambda *a, **k: list(user_hits))
+    monkeypatch.setattr(vectorstore, "query_frameworks", lambda *a, **k: list(framework_hits))
+    monkeypatch.setattr(vectorstore, "query_user_documents_hybrid", lambda *a, **k: list(user_hits))
+    monkeypatch.setattr(vectorstore, "query_frameworks_hybrid", lambda *a, **k: list(framework_hits))
+    monkeypatch.setattr("core.rerank.rerank", lambda q, hits, top_k: hits[:top_k])
+
+    for level in ("basic", "standard"):
+        monkeypatch.setattr(config.settings, "rag_level", level)
+        result = rag.retrieve_for_query("eq-canned-eng", "equality query")
+        assert result["context_block"] == rag.build_context_block("eq-canned-eng", "equality query")
+        user_ranks = [h["rank"] for h in result["user_hits"]]
+        framework_ranks = [h["rank"] for h in result["framework_hits"]]
+        assert user_ranks == list(range(1, len(result["user_hits"]) + 1))
+        assert framework_ranks == list(range(1, len(result["framework_hits"]) + 1))
+        assert user_ranks == [1, 2]
+        assert framework_ranks == [1]
+
+
+def test_retrieve_for_query_matches_on_real_store_data(monkeypatch):
+    eng = "real-eq-eng"
+    vectorstore.add_user_document_chunks(
+        eng, "notes.txt",
+        ["Deterministic retrieval equality zzrealequalitymarker across context blocks."],
+    )
+    monkeypatch.setattr(config.settings, "rag_level", "basic")
+    result = rag.retrieve_for_query(eng, "zzrealequalitymarker")
+    assert result["context_block"] == rag.build_context_block(eng, "zzrealequalitymarker")
+    assert result["user_hits"]
+    ranks = [h["rank"] for h in result["user_hits"]]
+    assert ranks == list(range(1, len(ranks) + 1))
+
+
+# ---- build_chat_messages retrieval reuse -------------------------------------------
+
+def test_build_chat_messages_reuses_provided_retrieval(monkeypatch):
+    def _boom(*args, **kwargs):
+        raise AssertionError("retrieval must not re-run when retrieved is provided")
+
+    monkeypatch.setattr(vectorstore, "query_user_documents", _boom)
+    monkeypatch.setattr(vectorstore, "query_frameworks", _boom)
+    monkeypatch.setattr(vectorstore, "query_user_documents_hybrid", _boom)
+    monkeypatch.setattr(vectorstore, "query_frameworks_hybrid", _boom)
+    monkeypatch.setattr(config.settings, "rag_level", "basic")
+
+    retrieved = {
+        "context_block": (
+            "=== Retrieved excerpts from uploaded documents ===\n"
+            "[pre.txt — chunk 0]\npre-retrieved zzreusemarker text"
+        ),
+        "user_hits": [],
+        "framework_hits": [],
+    }
+    messages = rag.build_chat_messages("reuse-eng", "question", [], retrieved=retrieved)
+    assert "pre-retrieved zzreusemarker text" in messages[-1]["content"]
+    assert "=== Client question ===\nquestion" in messages[-1]["content"]

@@ -169,8 +169,8 @@ class Orchestrator:
             return f"Failed to parse {filename}: {e}"
         if not text.strip():
             return f"Failed to ingest {filename}: no extractable text."
-        chunks = chunk_text_enriched(text, filename)
-        n = vectorstore.add_user_document_chunks(engagement_id, filename, chunks)
+        chunks, chunk_meta = chunk_text_enriched(text, filename, return_meta=True)
+        n = vectorstore.add_user_document_chunks(engagement_id, filename, chunks, chunk_meta)
         return f"Indexed **{filename}** ({n} chunks)."
 
     # ---- reports ----------------------------------------------------------------

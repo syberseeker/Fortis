@@ -21,6 +21,7 @@ import time
 from typing import List, Dict, Optional, Tuple
 
 from core.config import settings
+from core.token_utils import count_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,33 @@ _STATE: dict = {
     "model": None, "path": None, "error": None, "loading": False,
     "offload_level": None,
 }
+
+_USAGE_LOCK = threading.Lock()
+_LAST_USAGE: Optional[Dict[str, object]] = None
+
+
+def get_last_usage() -> Optional[Dict[str, object]]:
+    """Stats of the most recent llama completion (chat, stream, analysis).
+
+    Last-write-wins: concurrent generations overwrite each other's record,
+    which is acceptable for this single-user desktop app. Returns None
+    before the first completion; never raises for consumers."""
+    with _USAGE_LOCK:
+        if _LAST_USAGE is None:
+            return None
+        return dict(_LAST_USAGE)
+
+
+def _record_usage(record: Dict[str, object]) -> None:
+    global _LAST_USAGE
+    with _USAGE_LOCK:
+        _LAST_USAGE = record
+
+
+def _seed_kwargs() -> Dict[str, int]:
+    if settings.seed is None:
+        return {}
+    return {"seed": int(settings.seed)}
 
 _STOP_TOKENS = ["<|im_end|>", "</think>"]
 
@@ -469,14 +497,47 @@ def _extract_json_text(raw: str) -> str:
     return text
 
 
-def _complete(llm, messages, temperature, max_tokens, stream=False):
-    return llm.create_chat_completion(
+def _complete(llm, messages, temperature, max_tokens, stream=False, extra=None):
+    kwargs = dict(
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
         stop=_STOP_TOKENS,
         stream=stream,
     )
+    kwargs.update(_seed_kwargs())
+    if extra:
+        kwargs.update(extra)
+    return llm.create_chat_completion(**kwargs)
+
+
+def _estimate_prompt_tokens(messages) -> int:
+    return sum(count_tokens(str(m.get("content", ""))) for m in messages)
+
+
+def _usage_record(
+    prompt_tokens, completion_tokens, estimated, llm_ms, ttft_ms, temperature
+) -> Dict[str, object]:
+    total = (
+        None
+        if prompt_tokens is None or completion_tokens is None
+        else int(prompt_tokens) + int(completion_tokens)
+    )
+    tok_per_s = None
+    if completion_tokens and llm_ms and llm_ms > 0:
+        tok_per_s = round(float(completion_tokens) / (llm_ms / 1000.0), 2)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total,
+        "estimated": bool(estimated),
+        "llm_ms": round(llm_ms, 1),
+        "ttft_ms": None if ttft_ms is None else round(ttft_ms, 1),
+        "tok_per_s": tok_per_s,
+        "model": _STATE.get("path"),
+        "temperature": temperature,
+        "seed": settings.seed,
+    }
 
 
 async def chat(
@@ -494,9 +555,21 @@ async def chat(
     limit = max_tokens if max_tokens is not None else (3072 if json_mode else 2048)
 
     def run() -> str:
+        t0 = time.perf_counter()
         out = _complete(llm, messages, temperature, limit)
+        llm_ms = (time.perf_counter() - t0) * 1000.0
         content = out["choices"][0]["message"].get("content", "") or ""
         content = _clean(content)
+        usage = out.get("usage") or {}
+        prompt_tokens = usage.get("prompt_tokens")
+        completion_tokens = usage.get("completion_tokens")
+        estimated = prompt_tokens is None or completion_tokens is None
+        if estimated:
+            prompt_tokens = _estimate_prompt_tokens(messages)
+            completion_tokens = count_tokens(content)
+        _record_usage(
+            _usage_record(prompt_tokens, completion_tokens, estimated, llm_ms, None, temperature)
+        )
         if json_mode:
             content = _extract_json_text(content)
         return content
@@ -514,18 +587,46 @@ async def chat_stream(
 
     def run():
         try:
-            stream = _complete(llm, messages, temperature, 2048, stream=True)
+            t0 = time.perf_counter()
+            ttft_ms: Optional[float] = None
+            pieces: List[str] = []
+            usage: Dict[str, object] = {}
+            try:
+                stream = _complete(
+                    llm, messages, temperature, 2048, stream=True,
+                    extra={"stream_options": {"include_usage": True}},
+                )
+            except TypeError:
+                stream = _complete(llm, messages, temperature, 2048, stream=True)
             in_reasoning = False
             for part in stream:
-                delta = part["choices"][0].get("delta", {})
+                if not usage and part.get("usage"):
+                    usage.update(part["usage"])
+                choices = part.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta", {})
                 piece = delta.get("content") or ""
                 reasoning = delta.get("reasoning_content") or ""
                 if piece and "</think>" in piece:
                     piece = piece.split("</think>")[-1]
                 if piece:
+                    if ttft_ms is None:
+                        ttft_ms = (time.perf_counter() - t0) * 1000.0
+                    pieces.append(piece)
                     loop.call_soon_threadsafe(queue.put_nowait, ("t", piece))
                 elif reasoning and not in_reasoning:
                     in_reasoning = True  # suppress reasoning from the UI stream
+            llm_ms = (time.perf_counter() - t0) * 1000.0
+            prompt_tokens = usage.get("prompt_tokens")
+            completion_tokens = usage.get("completion_tokens")
+            estimated = prompt_tokens is None or completion_tokens is None
+            if estimated:
+                prompt_tokens = _estimate_prompt_tokens(messages)
+                completion_tokens = sum(count_tokens(p) for p in pieces)
+            _record_usage(
+                _usage_record(prompt_tokens, completion_tokens, estimated, llm_ms, ttft_ms, temperature)
+            )
             loop.call_soon_threadsafe(queue.put_nowait, ("done", ""))
         except Exception as e:
             loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))

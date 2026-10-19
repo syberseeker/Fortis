@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for model tiers catalog, hardware-based tier suggestions, and role plumbing.
 All tests are offline: monkeypatched HF API calls, temp directories for models.
 """
@@ -6,6 +6,8 @@ import os
 import tempfile
 import pytest
 from unittest.mock import patch, MagicMock
+
+from server.app import app
 
 
 # ---- Catalog shape tests ----------------------------------------------------
@@ -264,7 +266,7 @@ def test_chat_endpoint_role_reaches_build_chat_messages(monkeypatch):
     
     original_build = chat_router.rag.build_chat_messages
     
-    def capture_build(engagement_id, message, history=None, role=None, retrieval_query=None):
+    def capture_build(engagement_id, message, history=None, role=None, retrieval_query=None, **kwargs):
         captured_kwargs["role"] = role
         return original_build(engagement_id, message, history, role=role)
     
@@ -293,7 +295,7 @@ def test_chat_endpoint_unknown_role_coerced(monkeypatch):
     
     original_build = chat_router.rag.build_chat_messages
     
-    def capture_build(engagement_id, message, history=None, role=None, retrieval_query=None):
+    def capture_build(engagement_id, message, history=None, role=None, retrieval_query=None, **kwargs):
         captured_kwargs["role"] = role
         return original_build(engagement_id, message, history, role=role)
     
@@ -322,7 +324,7 @@ def test_chat_stream_endpoint_role_reaches_build_chat_messages(monkeypatch):
     
     original_build = chat_router.rag.build_chat_messages
     
-    def capture_build(engagement_id, message, history=None, role=None, retrieval_query=None):
+    def capture_build(engagement_id, message, history=None, role=None, retrieval_query=None, **kwargs):
         captured_kwargs["role"] = role
         return original_build(engagement_id, message, history, role=role)
     
@@ -349,7 +351,6 @@ def test_chat_stream_endpoint_role_reaches_build_chat_messages(monkeypatch):
 # ---- /api/model/select n_ctx test -------------------------------------------
 
 def test_model_select_sets_n_ctx_from_tier(monkeypatch):
-    from server.app import app
     from fastapi.testclient import TestClient
     from core.config import settings
     import engine.model_manager as model_manager

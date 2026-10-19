@@ -5,6 +5,65 @@ to the current build. Each version below is tagged in git (`v0.1.0` …
 `v0.6.0`) at the commit that marks its release. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Evaluation instrumentation for evidence grounding** — groundwork for
+  measuring retrieval quality, claim-level grounding, hallucination,
+  citation correctness, framework-mapping accuracy, and abstention
+  against a golden dataset:
+  - `core.rag.retrieve_for_query()` returns structured retrieval hits
+    (ids, distances, ranks) next to the prompt context block, and
+    `build_chat_messages()` accepts pre-retrieved hits to avoid a second
+    retrieval pass.
+  - Uploaded-document chunks carry span provenance (`start_char`,
+    `end_char`, `page_label`) in vector metadata, supplied at ingestion.
+  - `POST /chat` replies include an additive `sources` list, and assistant
+    turns persist provenance (`sources_json`, `usage_json`, `model_id`,
+    `rag_level`) via an idempotent SQLite migration read back through
+    `GET /chat/history/{id}`.
+  - `engine.get_last_usage()` captures prompt/completion tokens, wall-clock
+    duration, TTFT, and tokens/sec per completion (estimated via the
+    heuristic counter when llama.cpp does not report usage); the stub
+    backend mirrors the contract.
+  - Sampler seed pinning: `FORTIS_SEED` makes llama.cpp generation
+    reproducible for evaluation runs (unset keeps current behavior).
+  - Opt-in eval log (`FORTIS_EVAL_LOG=1`): one JSONL event per chat turn
+    (query, condensed query, retrieval hits, sources, usage, model) under
+    `<data>/eval_log/`; off by default with zero file IO.
+  - `python -m core.telemetry` prints the reproducibility manifest
+    (package versions, git commit, settings snapshot, model-file SHA-256,
+    hardware, backend wheel).
+- 22 offline regression tests for the new instrumentation; suite grew
+  297 → 319.
+
+### Changed
+- Unified framework alias handling in one canonical module
+  (`core/framework_aliases.py`); `core/reports/schema.py` and
+  `core/report_service.py` now share it, so the formerly divergent alias
+  tables can no longer disagree (validator recognition ⊇ parser
+  canonicalization). Legitimate spellings such as `ISO/IEC 27001` and
+  `MITRE ATT&CK (Enterprise)` no longer earn spurious `(unverified)`
+  demotions.
+- Dev dependencies pinned (`pytest>=9,<10`, `httpx>=0.28,<1.0`);
+  `requirements.lock` (fully frozen environment, 127 packages) added for
+  reproducible evaluation runs.
+
+### Hardened
+- Chat turn persistence and eval-event writes run off the event loop
+  (threadpooled) and stay best-effort; corrupt persisted provenance JSON
+  degrades to `None` instead of breaking `GET /chat/history`.
+- Chat-history migrations tolerate concurrent first-run column addition;
+  duplicate-column races no longer crash startup.
+- Persisted per-turn `usage` no longer discloses the absolute model-file
+  path (basename only; the full path stays in the local eval manifest).
+- `page_label` vector metadata is sanitized, so control characters from
+  document-authored `Sheet:` markers cannot ride into metadata, provenance
+  payloads, or future provenance viewers.
+- Uploaded-document snippet heads are surrogate-safe in persisted JSON;
+  unicode edge cases from extraction can no longer hard-fail chat or
+  history responses.
+
 ## [0.6.0] — 2026-10-11
 
 ### Added

@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import Any, Dict, List, Optional
 
 from .config import settings
 from . import vectorstore
@@ -47,23 +47,36 @@ ROLE_PRESETS: Dict[str, str] = {
 }
 
 
-def build_context_block(engagement_id: str, query: str) -> str:
+def _retrieve_hits(
+    engagement_id: str,
+    query: str,
+    top_k_user: Optional[int] = None,
+    top_k_framework: Optional[int] = None,
+):
+    """Runs retrieval at the configured rag_level (basic = dense only;
+    standard = hybrid BM25/RRF; full = hybrid + cross-encoder rerank) and
+    returns the raw (user_hits, framework_hits) lists in final order."""
+    tk_user = top_k_user if top_k_user is not None else settings.top_k_user_doc
+    tk_fw = top_k_framework if top_k_framework is not None else settings.top_k_framework
     if settings.rag_level == "basic":
-        user_hits = vectorstore.query_user_documents(engagement_id, query, settings.top_k_user_doc)
-        framework_hits = vectorstore.query_frameworks(query, settings.top_k_framework)
+        user_hits = vectorstore.query_user_documents(engagement_id, query, tk_user)
+        framework_hits = vectorstore.query_frameworks(query, tk_fw)
     else:
         user_hits = vectorstore.query_user_documents_hybrid(
-            engagement_id, query, settings.top_k_user_doc, settings.rerank_candidate_multiplier
+            engagement_id, query, tk_user, settings.rerank_candidate_multiplier
         )
         framework_hits = vectorstore.query_frameworks_hybrid(
-            query, settings.top_k_framework, settings.rerank_candidate_multiplier
+            query, tk_fw, settings.rerank_candidate_multiplier
         )
         if settings.rag_level == "full":
             from .rerank import rerank
 
-            user_hits = rerank(query, user_hits, settings.top_k_user_doc)
-            framework_hits = rerank(query, framework_hits, settings.top_k_framework)
+            user_hits = rerank(query, user_hits, tk_user)
+            framework_hits = rerank(query, framework_hits, tk_fw)
+    return user_hits, framework_hits
 
+
+def _format_context_block(user_hits, framework_hits) -> str:
     parts = []
     if user_hits:
         parts.append("=== Retrieved excerpts from uploaded documents ===")
@@ -87,6 +100,68 @@ def build_context_block(engagement_id: str, query: str) -> str:
     return "\n\n".join(parts)
 
 
+def _distance_or_none(hit: Dict) -> Optional[float]:
+    distance = hit.get("distance")
+    if distance is None:
+        return None
+    try:
+        return float(distance)
+    except (TypeError, ValueError):
+        return None
+
+
+def _structured_hits(hits: List[Dict], kind: str) -> List[Dict[str, Any]]:
+    """Normalizes raw retrieval hits into the public provenance shape: id,
+    text, full metadata, distance (float|None), and a 1-based rank over the
+    final ordered list. Dense/BM25 hits carry no stable chroma id, so one is
+    derived from metadata; rank reflects fusion/rerank order, not distance."""
+    out: List[Dict[str, Any]] = []
+    for rank, hit in enumerate(hits, start=1):
+        meta = hit.get("metadata") or {}
+        hit_id = hit.get("id")
+        if hit_id is None:
+            if kind == "user":
+                hit_id = f"{meta.get('filename')}::{meta.get('chunk_index')}"
+            else:
+                hit_id = f"{meta.get('framework')}::{meta.get('control_id')}"
+        out.append(
+            {
+                "id": hit_id,
+                "text": hit.get("text", ""),
+                "metadata": meta,
+                "distance": _distance_or_none(hit),
+                "rank": rank,
+            }
+        )
+    return out
+
+
+def retrieve_for_query(
+    engagement_id: str,
+    query: str,
+    *,
+    top_k_user: Optional[int] = None,
+    top_k_framework: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Single source of truth for retrieval. Returns the rendered
+    context_block (byte-identical to build_context_block for the same
+    inputs) plus structured user_hits/framework_hits carrying span-level
+    provenance for the evaluation harness. build_context_block delegates
+    here."""
+    user_hits, framework_hits = _retrieve_hits(
+        engagement_id, query, top_k_user=top_k_user, top_k_framework=top_k_framework
+    )
+    return {
+        "context_block": _format_context_block(user_hits, framework_hits),
+        "user_hits": _structured_hits(user_hits, "user"),
+        "framework_hits": _structured_hits(framework_hits, "framework"),
+    }
+
+
+def build_context_block(engagement_id: str, query: str) -> str:
+    return retrieve_for_query(engagement_id, query)["context_block"]
+
+
 _LLM_HISTORY_WINDOW = 16  # messages sent to the model, regardless of archive size
 
 
@@ -96,11 +171,17 @@ def build_chat_messages(
     history: List[Dict[str, str]] = None,
     role: str = None,
     retrieval_query: str = None,
+    retrieved: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, str]]:
     # Persisted history can be long; the model window stays bounded to the
     # most recent turns regardless of how much the UI sends.
     history = (history or [])[-_LLM_HISTORY_WINDOW:]
-    context = build_context_block(engagement_id, retrieval_query if retrieval_query is not None else user_message)
+    if retrieved is not None:
+        context = retrieved.get("context_block", "")
+    else:
+        context = build_context_block(
+            engagement_id, retrieval_query if retrieval_query is not None else user_message
+        )
 
     system_content = SYSTEM_PERSONA
     if role in ROLE_PRESETS:

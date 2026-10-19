@@ -12,6 +12,7 @@ Concepts:
 - active_engagement: which engagement a given Open WebUI user currently has
   selected, so the pipe doesn't need to ask every turn.
 """
+import json
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -49,12 +50,23 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     engagement_id TEXT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    sources_json TEXT,
+    usage_json TEXT,
+    model_id TEXT,
+    rag_level TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_engagement
     ON chat_messages(engagement_id, id);
 """
+
+_CHAT_MESSAGE_ADDED_COLUMNS = (
+    ("sources_json", "TEXT"),
+    ("usage_json", "TEXT"),
+    ("model_id", "TEXT"),
+    ("rag_level", "TEXT"),
+)
 
 
 @contextmanager
@@ -71,9 +83,21 @@ def _conn():
         conn.close()
 
 
+def _migrate_chat_message_columns(conn) -> None:
+    present = {row["name"] for row in conn.execute("PRAGMA table_info(chat_messages)")}
+    for name, decl in _CHAT_MESSAGE_ADDED_COLUMNS:
+        if name not in present:
+            try:
+                conn.execute(f"ALTER TABLE chat_messages ADD COLUMN {name} {decl}")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc).lower():
+                    raise
+
+
 def init_db() -> None:
     with _conn() as conn:
         conn.executescript(_SCHEMA)
+        _migrate_chat_message_columns(conn)
 
 
 def _now() -> str:
@@ -233,10 +257,19 @@ def clear_active_engagement(user_id: str) -> None:
 
 # ---- Chat history per engagement -----------------------------------------
 
-def append_chat_message(engagement_id: str, role: str, content: str) -> int:
+def append_chat_message(
+    engagement_id: str,
+    role: str,
+    content: str,
+    sources_json: Optional[str] = None,
+    usage_json: Optional[str] = None,
+    model_id: Optional[str] = None,
+    rag_level: Optional[str] = None,
+) -> int:
     """Stores one chat turn. Validates engagement existence (raises KeyError)
     so a race with engagement deletion cannot orphan rows. Older turns beyond
-    CHAT_HISTORY_CAP are pruned."""
+    CHAT_HISTORY_CAP are pruned. The provenance kwargs (assistant turns only,
+    by convention) are additive and nullable."""
     if role not in ("user", "assistant"):
         raise ValueError(f"Invalid chat role: {role!r}")
     if not get_engagement(engagement_id):
@@ -244,9 +277,12 @@ def append_chat_message(engagement_id: str, role: str, content: str) -> int:
     content = clean(content)
     with _conn() as conn:
         cur = conn.execute(
-            "INSERT INTO chat_messages (engagement_id, role, content, created_at) "
-            "VALUES (?, ?, ?, ?)",
-            (clean(engagement_id), role, content, _now()),
+            "INSERT INTO chat_messages (engagement_id, role, content, created_at, "
+            "sources_json, usage_json, model_id, rag_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                clean(engagement_id), role, content, _now(),
+                clean(sources_json), clean(usage_json), clean(model_id), clean(rag_level),
+            ),
         )
         conn.execute(
             "DELETE FROM chat_messages WHERE engagement_id = ? AND id NOT IN ("
@@ -257,19 +293,39 @@ def append_chat_message(engagement_id: str, role: str, content: str) -> int:
         return cur.lastrowid
 
 
+def _parse_json_field(raw, expected_type):
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, expected_type) else None
+
+
 def get_chat_history(engagement_id: str, limit: int = CHAT_HISTORY_CAP) -> List[Dict]:
-    """Returns persisted turns oldest-first, capped at the most recent *limit*."""
+    """Returns persisted turns oldest-first, capped at the most recent *limit*.
+    Assistant turns may carry additive provenance keys (sources, usage,
+    model_id, rag_level); corrupt or missing values read back as None."""
     if not get_engagement(engagement_id):
         raise KeyError(f"Engagement '{engagement_id}' not found.")
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT id, role, content, created_at FROM ("
-            "  SELECT id, role, content, created_at FROM chat_messages"
+            "SELECT id, role, content, created_at, sources_json, usage_json, "
+            "model_id, rag_level FROM ("
+            "  SELECT id, role, content, created_at, sources_json, usage_json, "
+            "model_id, rag_level FROM chat_messages"
             "  WHERE engagement_id = ? ORDER BY id DESC LIMIT ?"
             ") ORDER BY id ASC",
             (clean(engagement_id), max(1, int(limit))),
         ).fetchall()
-        return [dict(r) for r in rows]
+        turns = []
+        for row in rows:
+            turn = dict(row)
+            turn["sources"] = _parse_json_field(turn.pop("sources_json"), list)
+            turn["usage"] = _parse_json_field(turn.pop("usage_json"), dict)
+            turns.append(turn)
+        return turns
 
 
 def clear_chat_history(engagement_id: str) -> int:

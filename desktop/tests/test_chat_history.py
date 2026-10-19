@@ -240,6 +240,87 @@ def test_invalid_limit_is_clamped(client):
     assert len(resp.json()["turns"]) == 1
 
 
+# ---- provenance columns (sources / usage / model_id / rag_level) --------------
+
+def test_provenance_round_trip_via_append_and_read(client):
+    from core import store
+
+    eng = _make_engagement(client, "Hist Co", "Provenance")
+    sources = [
+        {
+            "source_type": "framework", "id": "NIST_CSF::PR.PS",
+            "framework": "NIST_CSF", "control_id": "PR.PS",
+            "rank": 1, "distance": 0.42, "snippet_head": "Protect...",
+        },
+    ]
+    usage = {
+        "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
+        "estimated": True, "model": "stub",
+    }
+    store.append_chat_message(eng["id"], "user", "which controls apply?")
+    store.append_chat_message(
+        eng["id"], "assistant", "PR.PS applies.",
+        sources_json=json.dumps(sources), usage_json=json.dumps(usage),
+        model_id="qwen3.5-4b-q4.gguf", rag_level="standard",
+    )
+    turns = store.get_chat_history(eng["id"])
+    assert turns[0]["sources"] is None
+    assert turns[0]["usage"] is None
+    assert turns[0]["model_id"] is None and turns[0]["rag_level"] is None
+    assert turns[1]["sources"] == sources
+    assert turns[1]["usage"] == usage
+    assert turns[1]["model_id"] == "qwen3.5-4b-q4.gguf"
+    assert turns[1]["rag_level"] == "standard"
+
+
+def test_provenance_round_trip_through_history_endpoint(client):
+    eng = _make_engagement(client, "Hist Co", "Provenance HTTP")
+    assert _chat(client, eng["id"], "what risks are in the config?").status_code == 200
+    turns = client.get(f"/chat/history/{eng['id']}").json()["turns"]
+    user_turn, assistant_turn = turns
+    assert assistant_turn["model_id"] == "stub"
+    assert assistant_turn["rag_level"] == "standard"
+    assert isinstance(assistant_turn["sources"], list)
+    for src in assistant_turn["sources"]:
+        assert src["source_type"] in ("user_document", "framework")
+        assert isinstance(src["rank"], int)
+    assert user_turn["sources"] is None and user_turn["usage"] is None
+    assert user_turn["model_id"] is None and user_turn["rag_level"] is None
+
+
+def test_corrupt_provenance_degrades_to_none(client):
+    from core import store
+
+    eng = _make_engagement(client, "Hist Co", "Provenance Corrupt")
+    store.append_chat_message(
+        eng["id"], "assistant", "reply",
+        sources_json="{not valid json", usage_json='["usage must be a dict"]',
+    )
+    store.append_chat_message(
+        eng["id"], "assistant", "reply 2",
+        sources_json='{"sources must be a list"}', usage_json="42",
+    )
+    store.append_chat_message(eng["id"], "assistant", "plain reply")
+    turns = store.get_chat_history(eng["id"])
+    assert [t["sources"] for t in turns] == [None, None, None]
+    assert [t["usage"] for t in turns] == [None, None, None]
+
+
+def test_repeated_init_db_keeps_provenance_columns(client):
+    from core import store
+
+    eng = _make_engagement(client, "Hist Co", "Migrate Twice")
+    store.init_db()
+    store.init_db()
+    store.append_chat_message(
+        eng["id"], "assistant", "after re-migration",
+        model_id="model.gguf", rag_level="full",
+    )
+    turns = store.get_chat_history(eng["id"])
+    assert turns[0]["model_id"] == "model.gguf"
+    assert turns[0]["rag_level"] == "full"
+
+
 # ---- LLM context window still capped at 16 ---------------------------------------
 
 def test_llm_context_window_unchanged_by_persistence(client):

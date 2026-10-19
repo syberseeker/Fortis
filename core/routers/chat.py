@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import uuid
@@ -12,13 +13,14 @@ from starlette.concurrency import run_in_threadpool
 from .. import rag, store
 from .. import report_intent as ri
 from .. import guardrail
+from .. import telemetry
 from ..config import settings
 from ..condense import condense_query
 from ..rag import ROLE_PRESETS
 from ..reports import chat_export
 from ..report_service import trim_focus_text, generate_report_result
 from ..structured import FORMAT_INSTRUCTIONS, REPAIR_INSTRUCTIONS, detect_structured_output_request, reply_has_valid_diagram, is_valid_gfm_table
-from engine import chat, chat_stream
+from engine import chat, chat_stream, get_last_usage
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -43,14 +45,72 @@ def _require_engagement(engagement_id: str) -> None:
         raise HTTPException(404, f"Engagement '{store.clean(engagement_id)}' not found. Create or select one first.")
 
 
-async def _persist_turn(engagement_id: str, user_text: str, assistant_text: str) -> None:
+async def _persist_turn(
+    engagement_id: str,
+    user_text: str,
+    assistant_text: str,
+    *,
+    sources=None,
+    usage=None,
+    model_id: Optional[str] = None,
+    rag_level: Optional[str] = None,
+) -> None:
     """Best-effort persistence of a chat turn; a failed write must never break
-    the chat reply itself."""
+    the chat reply itself. Provenance kwargs attach to the assistant row only;
+    calls without any (refusals, report/structured replies) keep the plain
+    write path."""
     try:
         await run_in_threadpool(store.append_chat_message, engagement_id, "user", user_text)
-        await run_in_threadpool(store.append_chat_message, engagement_id, "assistant", assistant_text)
+        if usage is not None and isinstance(usage, dict) and usage.get("model"):
+            usage = {**usage, "model": os.path.basename(str(usage["model"]))}
+        if sources is None and usage is None and model_id is None and rag_level is None:
+            await run_in_threadpool(store.append_chat_message, engagement_id, "assistant", assistant_text)
+            return
+        await run_in_threadpool(
+            store.append_chat_message,
+            engagement_id, "assistant", assistant_text,
+            None if sources is None else json.dumps(sources, ensure_ascii=False),
+            None if usage is None else json.dumps(usage, ensure_ascii=False),
+            model_id,
+            rag_level,
+        )
     except Exception:
         pass
+
+
+_SOURCE_META_KEYS = (
+    "filename", "chunk_index", "page_label", "start_char", "end_char",
+    "framework", "control_id",
+)
+
+
+def _sources_from_retrieved(retrieved: Optional[Dict]) -> List[Dict]:
+    sources: List[Dict] = []
+    for key, kind in (("user_hits", "user_document"), ("framework_hits", "framework")):
+        for hit in (retrieved or {}).get(key) or []:
+            meta = hit.get("metadata") or {}
+            entry = {
+                "source_type": kind,
+                "id": hit.get("id"),
+                "distance": hit.get("distance"),
+                "rank": hit.get("rank"),
+                "snippet_head": store.clean((hit.get("text") or ""))[:120],
+            }
+            for field in _SOURCE_META_KEYS:
+                if field in meta:
+                    entry[field] = meta.get(field)
+            sources.append(entry)
+    return sources
+
+
+def _model_id() -> str:
+    try:
+        from engine.llama_engine import current_model_path
+
+        path = current_model_path()
+    except Exception:
+        return "stub"
+    return os.path.basename(path) if path else "stub"
 
 
 async def run_structured_turn(engagement_id: str, message: str, history, intent: str, role: Optional[str] = None) -> str:
@@ -98,16 +158,34 @@ async def chat_endpoint(req: ChatRequest):
         reply = await run_structured_turn(req.engagement_id, req.message, req.history or [], intent, role)
         await _persist_turn(req.engagement_id, req.message, reply)
         return {"reply": reply}
-    messages = await run_in_threadpool(rag.build_chat_messages, req.engagement_id, req.message, req.history, role=role, retrieval_query=retrieval_query)
+    retrieved = await run_in_threadpool(rag.retrieve_for_query, req.engagement_id, retrieval_query)
+    messages = await run_in_threadpool(
+        rag.build_chat_messages,
+        req.engagement_id, req.message, req.history,
+        role=role, retrieval_query=retrieval_query, retrieved=retrieved,
+    )
     reply = await chat(messages)
     if guardrail.is_offtopic_refusal(reply):
         messages = await run_in_threadpool(
             rag.build_chat_messages,
-            req.engagement_id, guardrail.forced_answer_prompt(req.message), req.history, role=role, retrieval_query=retrieval_query
+            req.engagement_id, guardrail.forced_answer_prompt(req.message), req.history,
+            role=role, retrieval_query=retrieval_query, retrieved=retrieved,
         )
         reply = await chat(messages)
-    await _persist_turn(req.engagement_id, req.message, reply)
-    return {"reply": reply}
+    sources = _sources_from_retrieved(retrieved)
+    usage = get_last_usage()
+    model_id = _model_id()
+    await _persist_turn(
+        req.engagement_id, req.message, reply,
+        sources=sources, usage=usage, model_id=model_id, rag_level=settings.rag_level,
+    )
+    await run_in_threadpool(
+        telemetry.log_chat_turn,
+        engagement_id=req.engagement_id, query=req.message,
+        condensed_query=retrieval_query, retrieved=retrieved, sources=sources,
+        usage=usage, model_id=model_id, reply=reply,
+    )
+    return {"reply": reply, "sources": sources}
 
 
 @router.post("/stream")
@@ -148,7 +226,12 @@ async def chat_stream_endpoint(req: ChatRequest):
         async def generator():
             yield reply
         return StreamingResponse(generator(), media_type="text/plain")
-    messages = await run_in_threadpool(rag.build_chat_messages, req.engagement_id, req.message, req.history, role=role, retrieval_query=retrieval_query)
+    retrieved = await run_in_threadpool(rag.retrieve_for_query, req.engagement_id, retrieval_query)
+    messages = await run_in_threadpool(
+        rag.build_chat_messages,
+        req.engagement_id, req.message, req.history,
+        role=role, retrieval_query=retrieval_query, retrieved=retrieved,
+    )
 
     async def generator():
         acc = []
@@ -159,12 +242,25 @@ async def chat_stream_endpoint(req: ChatRequest):
         if guardrail.is_offtopic_refusal(full):
             retry = await run_in_threadpool(
                 rag.build_chat_messages,
-                req.engagement_id, guardrail.forced_answer_prompt(req.message), req.history, role=role, retrieval_query=retrieval_query
+                req.engagement_id, guardrail.forced_answer_prompt(req.message), req.history,
+                role=role, retrieval_query=retrieval_query, retrieved=retrieved,
             )
             async for token in chat_stream(retry):
                 yield token
             return
-        await _persist_turn(req.engagement_id, req.message, full)
+        sources = _sources_from_retrieved(retrieved)
+        usage = get_last_usage()
+        model_id = _model_id()
+        await _persist_turn(
+            req.engagement_id, req.message, full,
+            sources=sources, usage=usage, model_id=model_id, rag_level=settings.rag_level,
+        )
+        await run_in_threadpool(
+            telemetry.log_chat_turn,
+            engagement_id=req.engagement_id, query=req.message,
+            condensed_query=retrieval_query, retrieved=retrieved, sources=sources,
+            usage=usage, model_id=model_id, reply=full,
+        )
 
     return StreamingResponse(generator(), media_type="text/plain")
 

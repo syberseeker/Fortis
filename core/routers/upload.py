@@ -60,8 +60,8 @@ async def upload_file(
         raise HTTPException(422, "No extractable text found in this file.")
 
     display_name = _safe_disk_filename(_clean_filename(file.filename)) or file.filename
-    chunks = await run_in_threadpool(chunk_text_enriched, text, display_name)
-    n_added = await run_in_threadpool(vectorstore.add_user_document_chunks, engagement_id, display_name, chunks)
+    chunks, chunk_meta = await run_in_threadpool(chunk_text_enriched, text, display_name, return_meta=True)
+    n_added = await run_in_threadpool(vectorstore.add_user_document_chunks, engagement_id, display_name, chunks, chunk_meta)
     await run_in_threadpool(report_service.invalidate_engagement_cache, engagement_id)
 
     return {
