@@ -36,9 +36,24 @@ def test_health_reports_app_version():
 
 
 def test_latest_changelog_entry_has_tag():
-    """Every released version section should correspond to a git tag."""
+    """Every released version section should correspond to a git tag.
+
+    Skipped on non-tag CI events: a main-push run for a release commit
+    necessarily starts before the maintainer pushes the tag, so demanding
+    the tag there would fail every release. The check still enforces the
+    changelog<->tag pairing on dev machines (and on git-less sandboxes it
+    skips entirely)."""
     latest = _changelog_versions()[0]
+    import os
+    import shutil
     import subprocess
+
+    if shutil.which("git") is None:
+        pytest.skip("git is not available in this environment")
+    if os.getenv("GITHUB_ACTIONS") == "true" and not (
+        os.getenv("GITHUB_REF") or ""
+    ).startswith("refs/tags/"):
+        pytest.skip("tag assertion is a dev-machine guard; CI main-push runs precede tagging")
 
     out = subprocess.run(
         ["git", "tag", "-l", f"v{latest}"], capture_output=True, text=True, check=True
