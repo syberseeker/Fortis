@@ -189,3 +189,87 @@ def test_validate_accepts_alias_spellings(cache_env, monkeypatch):
     })
 
     assert report_service.validate_findings_mappings(report) == 0
+
+
+def test_divergent_alias_spellings_canonicalize_and_validate_consistently(cache_env, monkeypatch):
+    from core import framework_aliases
+    from core.reports import schema
+    from core.reports.schema import SecurityReport
+
+    assert not hasattr(schema, "_FRAMEWORK_ALIASES")
+    assert not hasattr(report_service, "_FRAMEWORK_ALIASES")
+
+    report_service.invalidate_known_framework_pairs_cache()
+
+    class _FakeCol:
+        def get(self, **kwargs):
+            return {"metadatas": [
+                {"framework": "MITRE_ATTACK", "control_id": "TA0043"},
+                {"framework": "ISO_27001", "control_id": "A.5.1"},
+            ]}
+
+    monkeypatch.setattr(report_service.vectorstore, "framework_collection", lambda: _FakeCol())
+
+    report = SecurityReport.model_validate({
+        "title": "T", "client_context": "c", "scope": "s",
+        "executive_summary": "e",
+        "findings": [
+            {"title": "mitre alias", "severity": "Low", "description": "d", "evidence": "e",
+             "source_file": "a", "framework": "MITRE ATT&CK (Enterprise)",
+             "control_id": "TA0043", "remediation": "r"},
+            {"title": "iso alias", "severity": "Low", "description": "d", "evidence": "e",
+             "source_file": "a", "framework": "ISO/IEC 27001",
+             "control_id": "A.5.1", "remediation": "r"},
+        ],
+        "overall_risk_rating": "Low",
+        "recommendations_summary": [],
+        "diagram": None,
+    })
+
+    assert report.findings[0].framework == "MITRE_ATTACK"
+    assert report.findings[1].framework == "ISO_27001"
+
+    assert report_service.validate_findings_mappings(report) == 0
+    assert report.findings[0].framework == "MITRE_ATTACK"
+    assert report.findings[0].control_id == "TA0043"
+    assert report.findings[1].framework == "ISO_27001"
+    assert report.findings[1].control_id == "A.5.1"
+
+    assert framework_aliases.canonical_framework("MITRE ATT&CK (Enterprise)") == "MITRE_ATTACK"
+    assert framework_aliases.canonical_framework("ISO/IEC 27001") == "ISO_27001"
+    assert framework_aliases.canonical_framework(None) is None
+    assert framework_aliases.canonical_framework("   ") is None
+
+
+def test_unknown_framework_passes_through_parser_and_is_demoted_by_validator(cache_env, monkeypatch):
+    from core import framework_aliases
+    from core.reports.schema import SecurityReport
+
+    report_service.invalidate_known_framework_pairs_cache()
+
+    class _FakeCol:
+        def get(self, **kwargs):
+            return {"metadatas": [{"framework": "NIST_CSF", "control_id": "PR.AA"}]}
+
+    monkeypatch.setattr(report_service.vectorstore, "framework_collection", lambda: _FakeCol())
+
+    report = SecurityReport.model_validate({
+        "title": "T", "client_context": "c", "scope": "s",
+        "executive_summary": "e",
+        "findings": [{"title": "f", "severity": "Medium", "description": "d", "evidence": "e",
+                      "source_file": "a", "framework": "INTERNAL_HOUSE_STANDARD",
+                      "control_id": "HSE-1.2", "remediation": "r"}],
+        "overall_risk_rating": "Medium",
+        "recommendations_summary": [],
+        "diagram": None,
+    })
+
+    assert report.findings[0].framework == "INTERNAL_HOUSE_STANDARD", \
+        "unknown framework must pass through the parser verbatim"
+    assert framework_aliases.canonical_framework("INTERNAL_HOUSE_STANDARD") == "INTERNAL_HOUSE_STANDARD"
+
+    demoted = report_service.validate_findings_mappings(report)
+
+    assert demoted == 1
+    assert report.findings[0].framework == "INTERNAL_HOUSE_STANDARD (unverified)"
+    assert report.findings[0].control_id == "HSE-1.2 (unverified)"

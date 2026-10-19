@@ -2,58 +2,13 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from ..framework_aliases import canonical_framework
+
 SeverityLevel = Literal["Critical", "High", "Medium", "Low", "Informational"]
 
 # Every framework shipped in the seed corpus (core/frameworks/_FILES). The
 # model may legally cite any of these; renderers chart framework names.
 FrameworkName = str
-
-_FRAMEWORK_ALIASES = {
-    "NIST CSF": "NIST_CSF",
-    "NIST_CSF": "NIST_CSF",
-    "OWASP": "OWASP_TOP10",
-    "OWASP TOP 10": "OWASP_TOP10",
-    "OWASP_TOP10": "OWASP_TOP10",
-    "CIS CONTROLS": "CIS_CONTROLS",
-    "CIS": "CIS_CONTROLS",
-    "CIS_CONTROLS": "CIS_CONTROLS",
-    "MITRE ATT&CK": "MITRE_ATTACK",
-    "MITRE ATT&CK (ENTERPRISE)": "MITRE_ATTACK",
-    "MITRE": "MITRE_ATTACK",
-    "MITRE_ATTACK": "MITRE_ATTACK",
-    "CIS BENCHMARKS": "CIS_BENCHMARKS",
-    "CIS_BENCHMARKS": "CIS_BENCHMARKS",
-    "ISO 27001": "ISO_27001",
-    "ISO27001": "ISO_27001",
-    "ISO/IEC 27001": "ISO_27001",
-    "ISO_27001": "ISO_27001",
-    "PCI DSS": "PCI_DSS",
-    "PCI-DSS": "PCI_DSS",
-    "PCI_DSS": "PCI_DSS",
-    "SOC 2": "SOC_2",
-    "SOC2": "SOC_2",
-    "SOC_2": "SOC_2",
-    "GDPR": "GDPR",
-    "HIPAA": "HIPAA",
-    "NIST 800-53": "NIST_800-53",
-    "NIST SP 800-53": "NIST_800-53",
-    "NIST_800-53": "NIST_800-53",
-    "CWE": "CWE_TOP25",
-    "CWE TOP 25": "CWE_TOP25",
-    "CWE_TOP25": "CWE_TOP25",
-}
-
-
-def _normalize_framework(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    canonical = _FRAMEWORK_ALIASES.get(stripped.upper())
-    if canonical:
-        return canonical
-    return stripped
 
 
 class Finding(BaseModel):
@@ -69,7 +24,7 @@ class Finding(BaseModel):
     @field_validator("framework", mode="before")
     @classmethod
     def _canon_framework(cls, v):
-        return _normalize_framework(v)
+        return canonical_framework(v)
 
 
 class SecurityReport(BaseModel):

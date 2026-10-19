@@ -22,6 +22,7 @@ import uuid
 from . import report_intent, store, vectorstore
 from .analysis import generate_security_report
 from .config import settings
+from .framework_aliases import canonical_framework
 from .reports.docx_report import render_docx
 from .reports.pdf_report import render_pdf
 from .reports.pptx_report import render_pptx
@@ -154,40 +155,6 @@ def invalidate_engagement_cache(engagement_id: str) -> None:
         conn.close()
 
 
-_FRAMEWORK_ALIASES = {
-    "NIST CSF": "NIST_CSF",
-    "NIST_CSF": "NIST_CSF",
-    "OWASP": "OWASP_TOP10",
-    "OWASP TOP 10": "OWASP_TOP10",
-    "OWASP_TOP10": "OWASP_TOP10",
-    "CIS CONTROLS": "CIS_CONTROLS",
-    "CIS": "CIS_CONTROLS",
-    "CIS_CONTROLS": "CIS_CONTROLS",
-    "MITRE ATT&CK": "MITRE_ATTACK",
-    "MITRE": "MITRE_ATTACK",
-    "MITRE_ATTACK": "MITRE_ATTACK",
-    "CIS BENCHMARKS": "CIS_BENCHMARKS",
-    "CIS_BENCHMARKS": "CIS_BENCHMARKS",
-    "ISO 27001": "ISO_27001",
-    "ISO27001": "ISO_27001",
-    "ISO_27001": "ISO_27001",
-    "PCI DSS": "PCI_DSS",
-    "PCI-DSS": "PCI_DSS",
-    "PCI_DSS": "PCI_DSS",
-    "SOC 2": "SOC_2",
-    "SOC2": "SOC_2",
-    "SOC_2": "SOC_2",
-    "GDPR": "GDPR",
-    "HIPAA": "HIPAA",
-    "NIST 800-53": "NIST_800-53",
-    "NIST SP 800-53": "NIST_800-53",
-    "NIST_800-53": "NIST_800-53",
-    "CWE": "CWE_TOP25",
-    "CWE TOP 25": "CWE_TOP25",
-    "CWE_TOP25": "CWE_TOP25",
-}
-
-
 _KNOWN_PAIRS_TTL_SECONDS = 300.0
 _KNOWN_PAIRS_CACHE = None
 _KNOWN_PAIRS_LOCK = threading.Lock()
@@ -242,7 +209,7 @@ def validate_findings_mappings(report) -> int:
         cid = (finding.control_id or "").strip()
         if not fw and not cid:
             continue
-        fw_canon = _FRAMEWORK_ALIASES.get(fw.upper(), fw) if fw else ""
+        fw_canon = canonical_framework(fw) if fw else ""
         if fw_canon and (fw_canon, cid) in known:
             continue
         # framework known but control id unknown -> demote just the control id
