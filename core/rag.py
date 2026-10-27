@@ -54,14 +54,15 @@ def _retrieve_hits(
     top_k_framework: Optional[int] = None,
 ):
     """Runs retrieval at the configured rag_level (basic = dense only;
-    standard = hybrid BM25/RRF; full = hybrid + cross-encoder rerank) and
-    returns the raw (user_hits, framework_hits) lists in final order."""
+    standard = hybrid BM25/RRF; full = hybrid + LLM condensation tier, plus
+    cross-encoder rerank when RERANK_BACKEND opts in) and returns the raw
+    (user_hits, framework_hits) lists in final order."""
     tk_user = top_k_user if top_k_user is not None else settings.top_k_user_doc
     tk_fw = top_k_framework if top_k_framework is not None else settings.top_k_framework
     if settings.rag_level == "basic":
         user_hits = vectorstore.query_user_documents(engagement_id, query, tk_user)
         framework_hits = vectorstore.query_frameworks(query, tk_fw)
-    elif settings.rag_level == "full":
+    elif settings.rag_level == "full" and settings.rerank_backend != "none":
         from .rerank import rerank
 
         cand_user = tk_user * settings.rerank_candidate_multiplier

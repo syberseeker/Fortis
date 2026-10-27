@@ -2,10 +2,27 @@
 
 All notable changes to Fortis, traced from the initial commit (2026-09-21)
 to the current build. Each version below is tagged in git (`v0.1.0` …
-`v0.6.1`) at the commit that marks its release. Format loosely follows
+`v0.6.2`) at the commit that marks its release. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.6.2] — 2026-10-28
+
+### Changed
+- **Cross-encoder reranking is now opt-in.** `RERANK_BACKEND` defaults to
+  `none`, so the `full` tier adds LLM query condensation only; set
+  `RERANK_BACKEND=sentence-transformers` to re-enable the cross-encoder at
+  `full`. Evidence: the golden-set ablation (51 items, bge-small embeddings,
+  this repo's corpora) measured reranking *lowering* recall@10
+  (0.8431 → 0.7974) and context-sufficiency@10 (0.9608 → 0.9020), and a
+  confirmation re-run (2026-10-28, `eval/runs/confirm-20261028`) reproduced
+  the exact same quality regression at 7.6 s p50 retrieval latency versus
+  ~5–7 ms without reranking — roughly 1,100x slower for a worse ranking.
+  Beyond latency, the default-off posture means the cross-encoder model is
+  no longer loaded on machines that never opted in. `standard` remains the
+  default tier and the retrieval-quality sweet spot on the measured corpus.
+- The ablation runner's `full` condition now pins `rerank_backend`
+  explicitly, so ablations always compare with the cross-encoder engaged
+  regardless of the app default.
 
 ### Added
 - **Phase 2 evaluation harness (`eval/`)** — golden dataset, retrieval-quality

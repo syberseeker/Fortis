@@ -422,6 +422,7 @@ def test_full_level_feeds_gt_topk_candidates_to_rerank(monkeypatch):
     monkeypatch.setattr(vectorstore, "query_frameworks_hybrid", fake_framework_hybrid)
     monkeypatch.setattr("core.rerank.rerank", fake_rerank)
     monkeypatch.setattr(config.settings, "rag_level", "full")
+    monkeypatch.setattr(config.settings, "rerank_backend", "sentence-transformers")
 
     block = rag.build_context_block("full-cand-eng", "full level query")
 
@@ -433,3 +434,46 @@ def test_full_level_feeds_gt_topk_candidates_to_rerank(monkeypatch):
         "reranker must receive more candidates than top_k or it can never reorder"
     )
     assert "zzfullcandmarker" in block
+
+
+def test_full_level_skips_rerank_by_default(monkeypatch):
+    candidates = [_canned_user_hit(f"default full candidate {i}") for i in range(8)]
+    captured_default = {}
+
+    def fake_user_hybrid(engagement_id, query, top_k, candidate_multiplier=4):
+        captured_default["args"] = (top_k, candidate_multiplier)
+        return list(candidates)
+
+    def fake_framework_hybrid(query, top_k, candidate_multiplier=4, framework=None):
+        return []
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("reranker must not run unless RERANK_BACKEND opts in")
+
+    monkeypatch.setattr(vectorstore, "query_user_documents_hybrid", fake_user_hybrid)
+    monkeypatch.setattr(vectorstore, "query_frameworks_hybrid", fake_framework_hybrid)
+    monkeypatch.setattr("core.rerank.rerank", _boom)
+    monkeypatch.setattr(config.settings, "rag_level", "full")
+    monkeypatch.setattr(config.settings, "rerank_backend", "none")
+
+    rag.build_context_block("full-default-eng", "any query")
+
+    top_k, multiplier = captured_default["args"]
+    assert multiplier == config.settings.rerank_candidate_multiplier
+    assert top_k == config.settings.top_k_user_doc
+
+
+def test_standard_level_never_reranks_even_with_backend_enabled(monkeypatch):
+    def fake_user_hybrid(engagement_id, query, top_k, candidate_multiplier=4):
+        return []
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("standard tier must not invoke the reranker")
+
+    monkeypatch.setattr(vectorstore, "query_user_documents_hybrid", fake_user_hybrid)
+    monkeypatch.setattr(vectorstore, "query_frameworks_hybrid", lambda *a, **k: [])
+    monkeypatch.setattr("core.rerank.rerank", _boom)
+    monkeypatch.setattr(config.settings, "rag_level", "standard")
+    monkeypatch.setattr(config.settings, "rerank_backend", "sentence-transformers")
+
+    rag.build_context_block("standard-no-rerank-eng", "any query")

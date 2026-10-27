@@ -146,11 +146,15 @@ class Settings:
     # ---- RAG upgrade ----
     # Tiers: "basic" = dense-only retrieval (original behavior);
     # "standard" = + hybrid BM25/RRF, chunk enrichment, heuristic query
-    # condensation (no extra LLM call); "full" = + LLM condensation and
-    # cross-encoder reranking (auto-disabled below rerank_min_ram_gb).
+    # condensation (no extra LLM call); "full" = + LLM condensation.
+    # Cross-encoder reranking is OPT-IN via RERANK_BACKEND (set it to
+    # "sentence-transformers" to enable at full): the golden-set ablation
+    # measured it lowering recall@10 (0.843 -> 0.797) and sufficiency@10
+    # (0.961 -> 0.902) at ~4.4 s p50 versus ~4-6 ms, so it is off unless
+    # explicitly requested.
     rag_level: str = os.getenv("RAG_LEVEL", "standard")
     rerank_model: str = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-base")
-    rerank_backend: str = os.getenv("RERANK_BACKEND", "sentence-transformers")  # "none" disables
+    rerank_backend: str = os.getenv("RERANK_BACKEND", "none")  # "sentence-transformers" opts in
     rerank_candidate_multiplier: int = _env_int("RERANK_CANDIDATE_MULTIPLIER", "4")
     rerank_min_ram_gb: float = _env_float("RERANK_MIN_RAM_GB", "8")
     bm25_rrf_k: int = _env_int("BM25_RRF_K", "60")

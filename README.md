@@ -9,8 +9,8 @@ Fortis is a fully local AI cybersecurity advisory desktop application for
 security assessments, document reviews, configuration analysis, and consulting
 workflows.
 
-**Current version: 0.6.1** — see [CHANGELOG.md](CHANGELOG.md) for the full
-development history. Stable releases are tagged `v0.1.0` … `v0.6.1`.
+**Current version: 0.6.2** — see [CHANGELOG.md](CHANGELOG.md) for the full
+development history. Stable releases are tagged `v0.1.0` … `v0.6.2`.
 
 Upload policies, configurations, source code, logs, architecture documents,
 or other security evidence and interact with a locally running AI advisor
@@ -70,8 +70,10 @@ Retrieval quality is tiered via `RAG_LEVEL` (see `.env.example`):
 - **standard** *(default)* — adds hybrid BM25+RRF keyword retrieval, chunk
   enrichment headers, and heuristic query condensation. Pure Python, no
   model — runs on any hardware.
-- **full** — adds LLM query condensation and cross-encoder reranking;
-  reranking auto-disables below 8 GB RAM.
+- **full** — adds LLM query condensation. Cross-encoder reranking is now
+  opt-in (`RERANK_BACKEND=sentence-transformers`): the golden-set ablation
+  measured it lowering recall@10 (0.843 → 0.797) while adding ~4.4 s p50
+  retrieval latency, so it ships off by default.
 
 ## Architecture
 
@@ -139,6 +141,7 @@ there are no telemetry or cloud calls.
 
 | Version | Date | Highlights |
 |---|---|---|
+| 0.6.2 | 2026-10-28 | Cross-encoder reranking becomes opt-in (golden-set ablation shows it lowers recall); `full` = LLM condensation tier |
 | 0.6.1 | 2026-10-19 | Evidence-grounding instrumentation: retrieval provenance + sources payload, chunk span metadata, seed pinning, usage capture, unified framework aliases |
 | 0.6.0 | 2026-10-11 | Chat replies and transcripts export to md/docx/pdf/pptx; hardened against forged transcripts and oversized exports |
 | 0.5.2 | 2026-10-11 | Performance pass: non-blocking event loop, cached retrieval/report hot paths, incremental BM25, rerank opt-in at `full` |

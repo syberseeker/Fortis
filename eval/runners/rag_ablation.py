@@ -32,7 +32,13 @@ from eval.metrics.retrieval import aggregate, evaluate_item
 CONDITIONS = [
     {"id": "basic", "rag_level": "basic"},
     {"id": "standard", "rag_level": "standard"},
-    {"id": "full", "rag_level": "full"},
+    # The "full" condition pins the rerank backend so the ablation always
+    # compares with the cross-encoder engaged (app default is opt-in).
+    {
+        "id": "full",
+        "rag_level": "full",
+        "rerank_backend": "sentence-transformers",
+    },
     {"id": "full-no-rerank", "rag_level": "full", "rerank_backend": "none"},
 ]
 
