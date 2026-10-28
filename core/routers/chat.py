@@ -1,6 +1,8 @@
+import glob
 import json
 import os
 import re
+import time
 import uuid
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -325,6 +327,19 @@ def _sanitize_transcript_turn(text: str) -> str:
 
 _MAX_EXPORT_CHARS = 1_000_000
 
+_CHAT_EXPORT_RETENTION_DAYS = 14
+
+
+def _sweep_stale_chat_exports() -> None:
+    cutoff = time.time() - _CHAT_EXPORT_RETENTION_DAYS * 86400
+    for ext in ("md", "docx", "pdf", "pptx"):
+        for path in glob.glob(os.path.join(settings.report_dir, f"*_chat_*.{ext}")):
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+            except OSError:
+                continue
+
 
 def _render_chat_export(md_text: str, output_path: str, title: str, fmt: str) -> str:
     return chat_export.REPLY_RENDERERS[fmt](md_text, output_path, title)
@@ -375,6 +390,10 @@ async def chat_export_endpoint(req: ChatExportRequest):
     base = ri._FILE_BASE_RE.sub("-", (req.engagement_id or "chat").lower())[:40].strip("-") or "chat"
     filename = f"{base}_chat_{stamp}_{uuid.uuid4().hex[:6]}.{fmt}"
     output_path = os.path.join(settings.report_dir, filename)
+    try:
+        await run_in_threadpool(_sweep_stale_chat_exports)
+    except Exception:
+        pass
     try:
         await run_in_threadpool(_render_chat_export, md_text, output_path, title, fmt)
     except Exception:

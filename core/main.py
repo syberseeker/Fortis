@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -12,16 +13,9 @@ logger = logging.getLogger(__name__)
 
 APP_VERSION = "0.6.2"
 
-app = FastAPI(title="Fortis — AI Cybersecurity Advisor", version=APP_VERSION)
 
-app.include_router(engagements.router)
-app.include_router(upload.router)
-app.include_router(chat.router)
-app.include_router(report.router)
-
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     logger.info("Initializing client/engagement database")
     init_db()
     logger.info("Seeding framework reference corpus: %s", FRAMEWORK_NAMES)
@@ -29,6 +23,15 @@ async def startup():
     warning = await check_model_available()
     if warning:
         logger.warning(warning)
+    yield
+
+
+app = FastAPI(title="Fortis — AI Cybersecurity Advisor", version=APP_VERSION, lifespan=lifespan)
+
+app.include_router(engagements.router)
+app.include_router(upload.router)
+app.include_router(chat.router)
+app.include_router(report.router)
 
 
 @app.get("/health")
