@@ -2,8 +2,62 @@
 
 All notable changes to Fortis, traced from the initial commit (2026-09-21)
 to the current build. Each version below is tagged in git (`v0.1.0` …
-`v0.6.2`) at the commit that marks its release. Format loosely follows
+`v0.7.0`) at the commit that marks its release. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
+
+## [0.7.0] — 2026-10-29
+
+### Added
+- **Stage B evaluation: LLM-judged claim support.** Stage A scores replies
+  lexically; Stage B judges whether each reply's claims are actually
+  supported by the retrieved evidence. It replays the stored, seed-pinned
+  Stage-A replies (no regeneration), reconstructs the retrieved excerpts at
+  the recorded RAG level, decomposes each reply into atomic claims (max 12,
+  extraction errors recorded), and asks a separate judge model to label
+  every claim `supported` / `unsupported` / `not_in_evidence` under an
+  NLI-style rubric: claim plus excerpts only — the question and the full
+  reply are withheld from the judge by design.
+- **Judge-isolation bias guard.** The judge must differ from the responder:
+  `--judge-model` resolves a GGUF path or a model tier, and the runner swaps
+  the loaded model. Same-model runs proceed only with a loud self-judging
+  warning, since self-judging inflates support rates.
+- **Calibration gate.** A hand-labeled claim/evidence set
+  (`eval/datasets/claim_support_calibration.jsonl`, 12 pairs including
+  remediation-advice, hedged, near-miss-quotation, and overgeneralization
+  cases) is judged before the run; accuracy and per-verdict agreement are
+  recorded in the results, with a prominent warning below 0.8.
+- **Stage A ↔ B bridge.** Aggregates report Pearson and Spearman
+  correlation between Stage-A lexical grounded-fraction and Stage-B judged
+  support rate — the check on whether the cheap lexical proxy tracks judged
+  quality.
+- Outputs follow the harness conventions (results.json / results.csv /
+  summary.md with an explicit LIMITATIONS section), and future Stage-A runs
+  now record the responder model name (basename only) for bias checks.
+- **Judge-assisted abstention.** Abstention traps are no longer skipped at
+  Stage B: a behavioral judge labels each trap reply
+  `appropriate_abstention` / `fabricated_answer` / `attempted_answer`
+  (question + reply only; facts are never graded), reporting
+  trap-abstention rate and agreement with Stage-A's marker detection.
+- **Citation-attribution correctness.** Every emitted control-id citation
+  is checked for resolution against the retrieved framework chunks and for
+  lexical support of its citing sentence (containment at 0.35), alongside
+  citation precision/recall/F1 against gold and a fabricated-citation rate.
+- **Framework-mapping accuracy.** Emitted (framework, control_id) pairs are
+  scored pair- and id-level against gold (P/R/F1), fabricated pairs are
+  flagged against the seeded corpus, and the real
+  `validate_findings_mappings` demoter is exercised over each reply's
+  citations to produce a kept/demoted confusion matrix against corpus truth.
+- **Hardened.** Judge calibration below 0.80 is now a hard error unless
+  `--allow-uncalibrated` is passed; judge prompts declare reply/question/
+  evidence blocks to be data rather than instructions, an adversarial
+  calibration pair (13th) probes verdict steering, Stage B refuses to
+  re-ingest sample documents into a non-eval engagement unless
+  `--allow-engagement` is passed, CSV verdict cells are formula-injection
+  escaped, and stored artifacts record model names (basenames) plus the
+  Stage-A source filename only. 13 more offline tests; suite grew 385 → 432.
+- 21 offline tests for the metric (verdict normalization, denominator
+  semantics, correlation edge cases, calibration agreement) — suite grew
+  364 → 385.
 
 ## [0.6.2] — 2026-10-28
 

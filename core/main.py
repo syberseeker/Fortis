@@ -11,7 +11,7 @@ from .routers import upload, chat, report, engagements
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.7.0"
 
 
 @asynccontextmanager

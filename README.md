@@ -9,8 +9,8 @@ Fortis is a fully local AI cybersecurity advisory desktop application for
 security assessments, document reviews, configuration analysis, and consulting
 workflows.
 
-**Current version: 0.6.2** — see [CHANGELOG.md](CHANGELOG.md) for the full
-development history. Stable releases are tagged `v0.1.0` … `v0.6.2`.
+**Current version: 0.7.0** — see [CHANGELOG.md](CHANGELOG.md) for the full
+development history. Stable releases are tagged `v0.1.0` … `v0.7.0`.
 
 Upload policies, configurations, source code, logs, architecture documents,
 or other security evidence and interact with a locally running AI advisor
@@ -141,6 +141,7 @@ there are no telemetry or cloud calls.
 
 | Version | Date | Highlights |
 |---|---|---|
+| 0.7.0 | 2026-10-29 | Stage B eval: LLM-judged claim support over stored replies, judge-isolation bias guard, calibration gate, Stage A↔B correlation |
 | 0.6.2 | 2026-10-28 | Cross-encoder reranking becomes opt-in (golden-set ablation shows it lowers recall); `full` = LLM condensation tier |
 | 0.6.1 | 2026-10-19 | Evidence-grounding instrumentation: retrieval provenance + sources payload, chunk span metadata, seed pinning, usage capture, unified framework aliases |
 | 0.6.0 | 2026-10-11 | Chat replies and transcripts export to md/docx/pdf/pptx; hardened against forged transcripts and oversized exports |
@@ -170,5 +171,6 @@ fortis/
 ├── desktop/app.py             # pywebview launcher
 ├── desktop/tests/             # offline integration suite (no GPU/network)
 ├── training/                  # workshop guides + lab docs
+├── eval/                        # offline eval harness (golden QA, retrieval ablation, grounding, claim support)
 └── openwebui/                 # Open WebUI container (optional chat UI)
 ```
