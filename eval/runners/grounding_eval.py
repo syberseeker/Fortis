@@ -141,6 +141,8 @@ def run_grounding_eval(
     noop = lambda message: None
     log = log or noop
 
+    from engine.llama_engine import current_model_path
+
     saved_rag_level = settings.rag_level
     if rag_level:
         settings.rag_level = rag_level
@@ -163,6 +165,7 @@ def run_grounding_eval(
         "backend": {
             "rag_level": saved_rag_level,
             "llm": engine.get_backend(),
+            "model": os.path.basename(current_model_path() or ""),
         },
     }
 
